@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Lumina AI — Hybrid (Manual + Auto) — POC</title>
+<meta name="description" content="Lumina AI POC: hybrid buy/sell markers, assistant, demo/real, MT5 Bridge fields, signals panel."/>
+<!-- Lightweight Charts (candlestick + markers) -->
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  :root{
+    --bg:#071023; --panel:#071428; --muted:#9fb0c8; --accent:#39d353; --danger:#ff4d4f;
+    --glass: rgba(255,255,255,0.03);
+    --card-radius:12px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;color:#e6f0fb;background:var(--bg)}
+  .top{display:flex;gap:8px;padding:10px;background:linear-gradient(90deg,#051129,#07182a);align-items:center;flex-wrap:wrap}
+  select,input,button{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+  #leftControls{display:flex;gap:8px;align-items:center;flex:1}
+  #balanceBox{background:var(--glass);padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.02)}
+  #chart{height:56vh;border-radius:12px;margin:12px;overflow:hidden;background:transparent}
+  .panel{padding:12px;margin:12px;border-radius:var(--card-radius);background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))}
+  .small{font-size:13px;color:var(--muted)}
+  .btn{padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);cursor:pointer;background:transparent;color:inherit}
+  #luminaOpen{position:fixed;right:18px;bottom:18px;width:64px;height:64px;border-radius:20px;background:linear-gradient(90deg,#ff758c,#7c5cff);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;border:none;z-index:1200;cursor:pointer;box-shadow:0 8px 30px rgba(0,0,0,0.5)}
+  #luminaSlide{position:fixed;right:0;top:0;height:100%;width:420px;max-width:95%;background:var(--panel);box-shadow:-20px 0 60px rgba(0,0,0,0.6);transform:translateX(100%);transition:transform .28s ease-in-out;z-index:1199;padding:12px;overflow:auto}
+  #luminaSlide.open{transform:translateX(0)}
+  .signal{display:flex;justify-content:space-between;padding:8px;border-bottom:1px solid rgba(255,255,255,0.03)}
+  .marker-buy{background:rgba(57,211,83,0.14);color:var(--accent);border-radius:8px;padding:6px 10px;font-weight:700}
+  .marker-sell{background:rgba(255,77,79,0.12);color:var(--danger);border-radius:8px;padding:6px 10px;font-weight:700}
+  .tpbox{background:rgba(0,0,0,0.6);color:#fff;padding:6px;border-radius:6px;font-size:12px}
+  .floatIndicator{position:absolute;right:14px;top:120px;background:var(--glass);padding:8px;border-radius:8px}
+  footer.note{color:var(--muted);font-size:13px;padding:12px;text-align:center}
+  @media(max-width:900px){ #luminaSlide{width:100%;} #chart{height:40vh} .top{padding:8px} }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="top">
+  <div id="leftControls">
+    <div id="balanceBox">
+      <div>Mode: <strong id="modeLabel">DEMO</strong></div>
+      <div class="small">Balance: <span id="balanceVal">$50,000</span></div>
+      <div class="small">Lot: <input id="topLot" value="0.01" style="width:84px"/></div>
+    </div>
+
+    <input id="pairSearch" placeholder="Search pairs (EUR,USD,BTC...)" style="min-width:200px"/>
+    <select id="pairSelect" title="Pairs" style="min-width:160px"></select>
+    <select id="timeframeSelect" title="Timeframe">
+      <option value="1">1S</option><option value="60" selected>1M</option><option value="300">5M</option><option value="900">15M</option>
+      <option value="3600">1H</option><option value="14400">4H</option><option value="86400">1D</option><option value="604800">1W</option><option value="2592000">1M</option><option value="31536000">1Y</option>
+    </select>
+
+    <label class="small" style="margin-left:6px">Account</label>
+    <button id="demoBtn" class="btn" style="background:#102033">DEMO</button>
+    <button id="realBtn" class="btn">REAL</button>
+
+  </div>
+
+  <div style="display:flex;gap:8px;align-items:center">
+    <input id="bridgeUrl" placeholder="Bridge URL (https://...)" style="width:280px"/>
+    <input id="bridgeUser" placeholder="user" style="width:86px"/>
+    <input id="bridgePass" placeholder="pass" type="password" style="width:110px"/>
+    <button id="connectBtn" class="btn">Connect Bridge</button>
+    <button id="mobileToggle" class="btn">Mobile Mode</button>
+  </div>
+</div>
+
+<!-- Chart -->
+<div id="chart"></div>
+
+<!-- Controls panel -->
+<div class="panel" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+  <div style="display:flex;gap:8px;align-items:center">
+    <button id="buyBtn" class="btn" style="background:#072a18;color:var(--accent)">BUY</button>
+    <button id="sellBtn" class="btn" style="background:#2a0b0b;color:var(--danger)">SELL</button>
+    <input id="volume" placeholder="lot e.g. 0.01" style="width:110px"/>
+    <input id="sl" placeholder="SL (price or 0)" style="width:120px"/>
+    <input id="tp" placeholder="TP (price or 0)" style="width:120px"/>
+    <button id="exitBtn" class="btn" style="background:#3b2b20;color:#ffb4a2">EXIT TRADE</button>
+  </div>
+
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+    <label class="small">Mode</label>
+    <select id="modeSelect"><option value="auto">AUTO</option><option value="manual">MANUAL</option></select>
+    <label class="small">ManualMin</label><input id="manualMin" type="number" value="95" style="width:72px"/>
+    <label class="small">AutoMin</label><input id="autoMin" type="number" value="100" style="width:72px"/>
+    <select id="indicatorSelect" title="Indicators" style="width:240px"><option>Loading indicators...</option></select>
+  </div>
+</div>
+
+<!-- Signals & Quick -->
+<div class="panel" style="display:flex;gap:12px;flex-wrap:wrap;">
+  <div style="flex:1">
+    <strong>Live Signal Panel</strong>
+    <div id="signalList" style="max-height:260px;overflow:auto;margin-top:8px"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button id="exportBtn" class="btn">Export Signals</button>
+      <button id="clearBtn" class="btn">Clear Signals</button>
+    </div>
+  </div>
+
+  <div style="width:320px">
+    <strong>Pairs — Quick</strong>
+    <div id="pairsQuick" style="max-height:240px;overflow:auto;margin-top:8px"></div>
+    <div style="margin-top:8px" class="small">History</div>
+    <div id="history" style="max-height:120px;overflow:auto;margin-top:6px"></div>
+  </div>
+</div>
+
+<footer class="note">Lumina AI POC — test on demo before live. For production deploy secure Bridge + MT5 EA and server-side secrets. I can generate those next.</footer>
+
+<!-- Lumina assistant open button (floating) -->
+<button id="luminaOpen" title="Open Lumina">Lumina ❤</button>
+
+<!-- Lumina slide (assistant) -->
+<div id="luminaSlide" aria-hidden="true">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <h3>Lumina — Assistant (Female)</h3>
+    <button id="luminaClose" class="btn">Close</button>
+  </div>
+
+  <div style="margin-top:8px">
+    <input id="luminaInput" placeholder="Say hi to Lumina..." style="width:100%;padding:8px;border-radius:8px"/>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button id="luminaAsk" class="btn">Send</button>
+      <button id="luminaMic" class="btn">🎤</button>
+      <label class="btn">📁<input id="fileInput" type="file" accept="image/*,video/*,.png,.jpg,.jpeg,.pdf" style="display:none"/></label>
+      <button id="camBtn" class="btn">Camera</button>
+    </div>
+
+    <div id="camWrap" style="margin-top:8px;display:none">
+      <video id="camPreview" autoplay playsinline style="width:100%;border-radius:8px;background:#000"></video>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button id="snapBtn" class="btn">Snap</button>
+        <button id="stopCam" class="btn">Stop</button>
+      </div>
+      <canvas id="snapCanvas" style="display:none"></canvas>
+    </div>
+
+    <div id="uploads" style="margin-top:8px"></div>
+
+    <div id="luminaChat" style="margin-top:12px;max-height:360px;overflow:auto;border-top:1px solid rgba(255,255,255,0.04);padding-top:8px"></div>
+  </div>
+</div>
+
+<script>
+/* -------------------------
+   Pairs, indicators, and initial UI fill
+   ------------------------- */
+const extras = ['CAD','CHF','AUD','NZD','JPY','GBP','EUR','USD','MXN','ZAR','SEK','NOK','TRY','BRL','INR','CNY','SGD','HKD','KRW','PLN','RUB'];
+let pairs = [];
+for(let i=0;i<extras.length;i++){
+  for(let j=0;j<extras.length;j++){
+    if(i===j) continue;
+    pairs.push(extras[i]+extras[j]);
+  }
+}
+pairs = Array.from(new Set([
+  "EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","USDCHF","NZDUSD","XAUUSD","BTCUSD","ETHUSD",
+  ...pairs
+])).slice(0,160);
+
+const pairSelect = document.getElementById('pairSelect');
+const pairsQuick = document.getElementById('pairsQuick');
+pairs.forEach(p=>{
+  const o=document.createElement('option'); o.value=p; o.textContent = p.slice(0,3)+'/'+p.slice(3); pairSelect.appendChild(o);
+  const btn = document.createElement('button'); btn.className='btn'; btn.style.width='100%'; btn.style.marginBottom='6px'; btn.textContent = p.slice(0,3)+'/'+p.slice(3);
+  btn.addEventListener('click', ()=>{ pairSelect.value=p; onPairChanged(); });
+  pairsQuick.appendChild(btn);
+});
+
+// indicator list (simulate many)
+const indicatorSelect = document.getElementById('indicatorSelect');
+const commonIndicators = ["RSI","MACD","Stochastic","Bollinger Bands","EMA","SMA","VWAP","ATR","ADX","CCI","OBV","Ichimoku","Parabolic SAR","Volume Profile","Momentum","ROC","Williams %R","SuperTrend"];
+commonIndicators.forEach(i=>{ const o=document.createElement('option'); o.value=i; o.textContent=i; indicatorSelect.appendChild(o); });
+for(let k=1;k<=520;k++){ const o=document.createElement('option'); o.value='Custom '+k; o.textContent='Custom '+k; indicatorSelect.appendChild(o); }
+
+/* -------------------------
+   Chart: LightweightCharts
+   ------------------------- */
+const chartContainer = document.getElementById('chart');
+const chart = LightweightCharts.createChart(chartContainer, {
+  layout: { background: { color: 'transparent' }, textColor: '#dbeafe' },
+  rightPriceScale: { borderVisible: false },
+  timeScale: { borderVisible: false, timeVisible: true }
+});
+const candleSeries = chart.addCandlestickSeries({
+  upColor: '#39d353',
+  downColor: '#ff4d4f',
+  wickUpColor: '#39d353',
+  wickDownColor: '#ff4d4f',
+  borderVisible: false
+});
+let candles = [];
+// initialize with small sample
+function seedCandles(){
+  candles = [];
+  const now = Math.floor(Date.now()/1000);
+  let price = 1.1000;
+  for(let i=100;i>0;i--){
+    const t = now - i*60;
+    const o = price;
+    const c = +(price + (Math.random()-0.5)*0.002).toFixed(6);
+    const h = Math.max(o,c) + Math.random()*0.0008;
+    const l = Math.min(o,c) - Math.random()*0.0008;
+    price = c;
+    candles.push({ time: t, open: +o.toFixed(6), high: +h.toFixed(6), low: +l.toFixed(6), close: +c.toFixed(6) });
+  }
+  candleSeries.setData(candles);
+}
+seedCandles();
+
+/* markers handling (persisted as array) */
+let markers = [];
+function addChartMarker(type, time, price, label){
+  markers.push({ time: time, position: type==='buy' ? 'belowBar' : 'aboveBar', color: type==='buy' ? '#39d353' : '#ff4d4f', shape: type==='buy' ? 'arrowUp' : 'arrowDown', text: label });
+  if(markers.length>400) markers.shift();
+  candleSeries.setMarkers(markers);
+}
+function clearMarkers(){ markers = []; candleSeries.setMarkers([]); }
+
+/* -------------------------
+   Lumina POC Signal Engine (simulated SMC-like heuristics)
+   - This is a front-end POC only. For accurate signals plug historical OHLC data and real indicator calculations.
+   ------------------------- */
+let signals = []; // {pair,tf,type,price,sl,tp,conf,time,id,favorite}
+const signalListEl = document.getElementById('signalList');
+const maxSignals = 1000;
+function pushSignal(sig){
+  sig.id = 's_'+Date.now()+'_'+Math.floor(Math.random()*1000);
+  signals.unshift(sig);
+  if(signals.length>maxSignals) signals.pop();
+  renderSignals();
+  // add chart marker
+  addChartMarker(sig.type, Math.floor(sig.time/1000), sig.price, `${sig.type.toUpperCase()} ${sig.conf}%`);
+}
+function renderSignals(){
+  signalListEl.innerHTML = '';
+  signals.slice(0,80).forEach(s=>{
+    const d = document.createElement('div'); d.className='signal';
+    d.innerHTML = `<div><strong>${s.type.toUpperCase()}</strong> ${s.pair} <div class="small">${new Date(s.time).toLocaleString()}</div></div>
+      <div style="text-align:right">
+        <div>${+s.price.toFixed(6)}</div>
+        <div class="small">TP:${s.tp||'—'} SL:${s.sl||'—'}</div>
+        <div style="display:flex;gap:6px;margin-top:6px;justify-content:flex-end">
+          <button class="btn" data-id="${s.id}" onclick="confirmTrade(event)">Confirm</button>
+          <button class="btn" data-id="${s.id}" onclick="favoriteSignal(event)">❤</button>
+        </div>
+      </div>`;
+    signalListEl.appendChild(d);
+  });
+}
+
+// favorite (heart)
+function favoriteSignal(e){ const id = e.target.dataset.id; const s = signals.find(x=>x.id===id); if(!s) return; s.favorite = !s.favorite; renderSignals(); }
+
+// confirm (manual) -> send trade
+async function confirmTrade(e){
+  const id = e.target.dataset.id; const s = signals.find(x=>x.id===id); if(!s) return alert('Signal not found');
+  // in manual mode we send only after confirm
+  sendToBridge({ ea_id:'lumina_ea_01', cmd: s.type, symbol: s.pair, volume: +document.getElementById('topLot').value || 0.01, sl: s.sl || 0, tp: s.tp || 0, manual:true, time: Date.now(), conf: s.conf }).then(r=>{
+    if(r && r.ok) {
+      appendHistory(`CONFIRMED ${s.type.toUpperCase()} ${s.pair} lot ${document.getElementById('topLot').value}`);
+      alert('Confirmed & queued to bridge.');
+    } else {
+      alert('Bridge response: ' + JSON.stringify(r));
+    }
+  }).catch(()=>alert('Failed to send to bridge (check Bridge URL/credentials)'));
+}
+
+/* -------------------------
+   Simulated analyzer that creates signals from candle closes
+   - replace this with real algorithm using 20y data for production
+   ------------------------- */
+function simulateAnalyzerOnCandle(closeCandle){
+  const score = Math.random()*100; // placeholder for real confidence calculation
+  // manual threshold
+  const manualMin = parseInt(document.getElementById('manualMin').value || 95,10);
+  // auto threshold
+  const autoMin = parseInt(document.getElementById('autoMin').value || 100,10);
+  // create candidate signal when score high
+  if(score > 75){
+    const type = (Math.random()>0.5) ? 'buy' : 'sell';
+    const conf = Math.min(100, Math.round(90 + (score/100)*10));
+    const sig = { pair: pairSelect.value, tf: document.getElementById('timeframeSelect').value, type, price: closeCandle.close, sl: +(closeCandle.close - (type==='buy'?0.001: -0.001)).toFixed(6), tp: +(closeCandle.close + (type==='buy'?0.002:-0.002)).toFixed(6), conf, time: Date.now() };
+    // Manual mode: only store signals >= manualMin (user confirms to execute)
+    if(document.getElementById('modeSelect').value === 'manual'){
+      if(sig.conf >= manualMin){
+        pushSignal(sig);
+      }
+    } else { // auto mode, execute if conf >= autoMin
+      if(sig.conf >= autoMin){
+        // send to bridge if configured (auto)
+        sendToBridge({ ea_id:'lumina_ea_01', cmd: sig.type, symbol: sig.pair, volume: +document.getElementById('topLot').value || 0.01, sl: sig.sl, tp: sig.tp, time: Date.now(), conf: sig.conf }).then(r=>{
+          pushSignal(sig); appendHistory(`AUTO ${sig.type.toUpperCase()} ${sig.pair} conf ${sig.conf}`);
+        }).catch(e=>{
+          pushSignal(sig); appendHistory(`AUTO FAILED ${sig.type} ${sig.pair}`);
+        });
+      } else {
+        // if not meeting auto min, still add as a candidate for user review if >= manualMin
+        if(sig.conf >= manualMin) pushSignal(sig);
+      }
+    }
+  }
+}
+
+/* -------------------------
+   Replace this simulated "live feed" with real streaming or historical loader (TwelveData)
+   Example: fetch 20-year OHLC and call candleSeries.setData(history) then iterate closes to analyze.
+   ------------------------- */
+setInterval(()=>{
+  // tick new candle for demo
+  const last = candles[candles.length-1];
+  const now = Math.floor(Date.now()/1000);
+  const price = +(last.close + (Math.random()-0.5)*0.0008).toFixed(6);
+  const high = Math.max(last.close,price)+(Math.random()*0.0004);
+  const low = Math.min(last.close,price)-(Math.random()*0.0004);
+  const newC = { time: now, open: last.close, high: +high.toFixed(6), low: +low.toFixed(6), close: price };
+  candles.push(newC);
+  if(candles.length>500) candles.shift();
+  candleSeries.update(newC);
+  // analyzer
+  simulateAnalyzerOnCandle(newC);
+}, 7000);
+
+/* -------------------------
+   Bridge communication helpers
+   ------------------------- */
+function getBridgeAuthHeader(){
+  const u = (document.getElementById('bridgeUser').value||'').trim();
+  const p = (document.getElementById('bridgePass').value||'').trim();
+  if(!u) return null;
+  return 'Basic '+btoa(u+':'+p);
+}
+async function sendToBridge(body){
+  const url = (document.getElementById('bridgeUrl').value||'').trim();
+  if(!url) return Promise.reject('No Bridge URL');
+  try{
+    const headers = {'Content-Type':'application/json'};
+    const auth = getBridgeAuthHeader();
+    if(auth) headers['Authorization'] = auth;
+    const res = await fetch(url + '/api/trade', { method:'POST', headers, body: JSON.stringify(body) });
+    return await res.json();
+  }catch(e){ return Promise.reject(e); }
+}
+
+/* -------------------------
+   UI actions
+   ------------------------- */
+document.getElementById('connectBtn').addEventListener('click', ()=>{
+  const u = document.getElementById('bridgeUrl').value.trim();
+  if(!u) return alert('Enter Bridge URL');
+  alert('Bridge configured locally (frontend). For security, store secrets server-side. This POC will attempt to talk to Bridge on actions.');
+});
+document.getElementById('buyBtn').addEventListener('click', ()=>manualPlace('buy'));
+document.getElementById('sellBtn').addEventListener('click', ()=>manualPlace('sell'));
+document.getElementById('exitBtn').addEventListener('click', ()=>exitTrades());
+document.getElementById('demoBtn').addEventListener('click', ()=>setMode('DEMO'));
+document.getElementById('realBtn').addEventListener('click', ()=>setMode('REAL'));
+document.getElementById('mobileToggle').addEventListener('click', ()=>{
+  document.body.classList.toggle('mobile'); alert('Toggled mobile/desktop view (POC).');
+});
+
+// manual place
+async function manualPlace(side){
+  const body = { ea_id:'lumina_ea_01', cmd: side, symbol: pairSelect.value, volume: parseFloat(document.getElementById('volume').value)||parseFloat(document.getElementById('topLot').value)||0.01, sl: parseFloat(document.getElementById('sl').value)||0, tp: parseFloat(document.getElementById('tp').value)||0, manual:true, time: Date.now() };
+  if(document.getElementById('modeLabel').textContent === 'DEMO'){
+    appendHistory(`DEMO ${side.toUpperCase()} ${body.symbol} vol ${body.volume}`);
+    pushSignal({ pair: body.symbol, tf: document.getElementById('timeframeSelect').value, type: side, price: 0, sl: body.sl, tp: body.tp, conf: 100, time: Date.now() });
+    alert('Simulated demo trade placed locally.');
+    return;
+  }
+  try{
+    const r = await sendToBridge(body);
+    appendHistory(`${side.toUpperCase()} ${body.symbol} -> ${JSON.stringify(r).slice(0,80)}`);
+    alert('Sent to Bridge: '+JSON.stringify(r));
+  }catch(e){ alert('Failed to send to Bridge: '+e); }
+}
+
+// exit trades (POC)
+async function exitTrades(){
+  if(document.getElementById('modeLabel').textContent === 'DEMO'){
+    appendHistory('DEMO Exit All Orders (simulated)');
+    alert('Simulated: exited demo trades.');
+    return;
+  }
+  const url = (document.getElementById('bridgeUrl').value||'').trim();
+  if(!url) return alert('Enter Bridge URL to exit live trades');
+  try{
+    const res = await fetch(url + '/api/close_all', { method:'POST', headers:{'Content-Type':'application/json', 'Authorization': getBridgeAuthHeader() }, body: JSON.stringify({ ea_id:'lumina_ea_01' })});
+    const j = await res.json();
+    appendHistory('Exit all -> '+JSON.stringify(j).slice(0,80));
+    alert('Exit request sent to Bridge.');
+  }catch(e){ alert('Bridge exit failed'); }
+}
+
+/* -------------------------
+   History helper
+   ------------------------- */
+function appendHistory(text){
+  const h = document.getElementById('history');
+  const d = document.createElement('div'); d.className='small'; d.textContent = `${new Date().toLocaleTimeString()} — ${text}`;
+  h.prepend(d);
+}
+
+/* -------------------------
+   Pair search & change handling
+   ------------------------- */
+document.getElementById('pairSearch').addEventListener('input', (e)=>{
+  const q = e.target.value.trim().toUpperCase();
+  pairSelect.innerHTML = '';
+  pairs.filter(p=>p.includes(q)).forEach(p=>{ const o=document.createElement('option'); o.value=p; o.textContent = p.slice(0,3)+'/'+p.slice(3); pairSelect.appendChild(o); });
+});
+function onPairChanged(){
+  clearMarkers();
+  seedCandles(); // re-seed demo candles on pair change (in production load historical)
+  appendHistory(`Selected ${pairSelect.value}`);
+}
+pairSelect.addEventListener('change', onPairChanged);
+
+/* -------------------------
+   Signals persistence & export
+   ------------------------- */
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const blob = new Blob([JSON.stringify(signals, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'lumina_signals.json'; a.click(); URL.revokeObjectURL(url);
+});
+document.getElementById('clearBtn').addEventListener('click', ()=>{ if(confirm('Clear signals?')){ signals=[]; clearMarkers(); renderSignals(); } });
+
+/* -------------------------
+   Lumina Assistant (chat + mic + camera + female voice)
+   - If user clicks microphone, Lumina uses STT then speaks back (TTS female).
+   - If user types and sends, Lumina replies by text only (no speaking) — per your request.
+   ------------------------- */
+const luminaOpen = document.getElementById('luminaOpen'), luminaSlide = document.getElementById('luminaSlide');
+luminaOpen.addEventListener('click', ()=>luminaSlide.classList.toggle('open'));
+document.getElementById('luminaClose').addEventListener('click', ()=>luminaSlide.classList.remove('open'));
+
+function appendChat(who, text, speak=false){
+  const box = document.getElementById('luminaChat');
+  const d = document.createElement('div'); d.style.marginBottom = '8px';
+  d.innerHTML = `<strong>${who}:</strong> <div class="small">${text}</div>`;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+  if(speak) speakFemale(text);
+}
+document.getElementById('luminaAsk').addEventListener('click', ()=>{
+  const q = document.getElementById('luminaInput').value.trim();
+  if(!q) return;
+  appendChat('You', q, false);
+  // POC: playful girlfriend reply
+  setTimeout(()=>{ const reply = generateLuminaReply(q); appendChat('Lumina', reply, false); }, 500);
+  document.getElementById('luminaInput').value='';
+});
+
+// microphone STT -> Lumina replies by voice
+let recognition = null;
+document.getElementById('luminaMic').addEventListener('click', async ()=>{
+  if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)){ alert('SpeechRecognition not supported'); return; }
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  recognition.start();
+  recognition.onresult = (e)=>{ const text = e.results[0][0].transcript; appendChat('You', text, false); const reply = generateLuminaReply(text); appendChat('Lumina', reply, true); };
+  recognition.onerror = (e)=>{ alert('Speech error'); };
+});
+
+// TTS female
+function speakFemale(txt){
+  try{
+    const u = new SpeechSynthesisUtterance(txt);
+    const voices = speechSynthesis.getVoices();
+    // heuristics to pick a female english voice
+    let voice = voices.find(v=>/female|zira|susan|karen/i.test(v.name)) || voices.find(v=>v.lang && v.lang.startsWith('en')) || voices[0];
+    if(voice) u.voice = voice;
+    u.pitch = 1.05; u.rate = 1;
+    speechSynthesis.speak(u);
+  }catch(e){ console.warn('TTS fail', e); }
+}
+
+// camera
+let stream = null;
+document.getElementById('camBtn').addEventListener('click', async ()=>{
+  const camWrap = document.getElementById('camWrap'); camWrap.style.display='block';
+  try{ stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); document.getElementById('camPreview').srcObject = stream; }catch(e){ alert('Camera error'); }
+});
+document.getElementById('stopCam').addEventListener('click', ()=>{ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; document.getElementById('camPreview').srcObject=null; document.getElementById('camWrap').style.display='none'; }});
+document.getElementById('snapBtn').addEventListener('click', ()=>{ const v = document.getElementById('camPreview'); const c = document.getElementById('snapCanvas'); c.width = v.videoWidth; c.height = v.videoHeight; const ctx = c.getContext('2d'); ctx.drawImage(v,0,0); const url = c.toDataURL(); const img = document.createElement('img'); img.src = url; img.style.maxWidth = '100%'; document.getElementById('uploads').appendChild(img); alert('Captured'); });
+
+document.getElementById('fileInput').addEventListener('change',(e)=>{ const f = e.target.files[0]; if(!f) return; const url = URL.createObjectURL(f); const el = document.createElement('div'); el.innerHTML = `<div class="small">${f.name}</div><a href="${url}" target="_blank">Open</a>`; document.getElementById('uploads').appendChild(el); });
+
+function generateLuminaReply(userText){
+  // playful girlfriend-style POC replies + basic chart-aware suggestions
+  const lower = userText.toLowerCase();
+  if(/hi|hello|hey|yo/.test(lower)) return "Hello baby ❤️ — I'm Lumina. Want me to scan the open chart for trade opportunities?";
+  if(/scan|analyz|check/.test(lower)) { return `I'll check ${pairSelect.value} on ${document.getElementById('timeframeSelect').value} — scanning for order blocks and imbalance...`; }
+  if(/balance|account/.test(lower)) return `Your current mode is ${document.getElementById('modeLabel').textContent}. Balance: ${document.getElementById('balanceVal').textContent}.`;
+  if(/bye|sleep|stop/.test(lower)) return "Okay baby — I'll be here when you need me 💞";
+  // default friendly reply
+  return "Got it baby — I will analyze and tell you what I find. Want AUTO or MANUAL mode for execution?";
+}
+
+/* -------------------------
+   Utility: set mode demo/real
+   ------------------------- */
+function setMode(m){
+  document.getElementById('modeLabel').textContent = m;
+  if(m === 'DEMO'){ document.getElementById('balanceVal').textContent = '$50,000.00'; }
+  else { document.getElementById('balanceVal').textContent = '—'; }
+  appendHistory(`Switched to ${m}`);
+}
+
+/* -------------------------
+   Final notes printed to console
+   ------------------------- */
+console.log('Lumina AI Hybrid POC loaded (Option 3). Replace simulated analyzer and candles with real historical OHLC (TwelveData) and a secure Bridge+EA for live trading.');
+</script>
+</body>
+</html>
