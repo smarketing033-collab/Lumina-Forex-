@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Lumina AI — Ultra MAX (Trading + Assistant)</title>
+<meta name="description" content="Lumina AI Ultra MAX POC — trading + assistant + demo/real + auto/manual + camera + TTS" />
+<!-- TradingView widget (POC) -->
+<script src="https://s3.tradingview.com/tv.js"></script>
+<style>
+  :root{
+    --bg:#071023; --panel:#071428; --muted:#9fb0c8; --accent:#ff6ec7; --accent2:#7c5cff;
+    --good:#39d353; --bad:#ff4d4f; --card-radius:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:#e6f0fb}
+  .container{max-width:1300px;margin:8px auto;padding:10px}
+  .row{display:flex;gap:10px;align-items:center}
+  .col{display:flex;flex-direction:column;gap:10px}
+  .card{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));padding:12px;border-radius:var(--card-radius);box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+  input,select,button,textarea{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+  .topbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  #chartWrap{height:56vh;border-radius:10px;overflow:hidden}
+  .small{font-size:13px;color:var(--muted)}
+  .pill{padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.04);cursor:pointer}
+  .btn{padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);cursor:pointer}
+  #luminaButton{position:fixed;right:18px;bottom:18px;width:70px;height:70px;border-radius:16px;background:linear-gradient(90deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;z-index:2000;border:none}
+  #luminaPanel{position:fixed;right:0;top:0;height:100%;width:460px;max-width:95%;background:linear-gradient(180deg,var(--panel),#061226);box-shadow:-30px 0 80px rgba(0,0,0,0.6);transform:translateX(100%);transition:transform .28s;z-index:1999;padding:14px;overflow:auto}
+  #luminaPanel.open{transform:translateX(0)}
+  .signal{padding:8px;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;justify-content:space-between;align-items:center}
+  .badge-buy{background:rgba(57,211,83,0.12);color:var(--good);padding:6px 10px;border-radius:8px;font-weight:700}
+  .badge-sell{background:rgba(255,77,79,0.09);color:var(--bad);padding:6px 10px;border-radius:8px;font-weight:700}
+  .confirmModal{position:fixed;left:0;top:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);z-index:3000}
+  .confirmCard{background:var(--panel);padding:18px;border-radius:12px;max-width:520px;width:92%}
+  .marker{position:absolute;pointer-events:none;z-index:1500;font-weight:700;padding:6px 10px;border-radius:8px}
+  .marker.buy{background:rgba(57,211,83,0.12);color:var(--good);left:20px;top:80px}
+  .marker.sell{background:rgba(255,77,79,0.09);color:var(--bad);right:20px;top:80px}
+  .hidden{display:none}
+  .theme-light{--bg:#ffffff;--panel:#f6f9ff;color:#091426}
+  @media(max-width:1000px){ #luminaPanel{width:100%;} #chartWrap{height:44vh} .row{flex-direction:column;align-items:stretch} }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- TOP -->
+  <div class="topbar">
+    <div class="card row" style="align-items:center">
+      <div class="col" style="min-width:220px">
+        <div style="font-weight:700">Lumina AI — Ultra MAX</div>
+        <div class="small">Front-end POC — Demo safe mode included</div>
+      </div>
+
+      <div style="display:flex;gap:10px;align-items:center">
+        <div class="small">Mode: <strong id="accountMode">DEMO</strong></div>
+        <div class="small">Balance: <strong id="balance">$50,000.00</strong></div>
+        <div class="small">Lot: <input id="lot" value="0.01" style="width:80px" /></div>
+      </div>
+    </div>
+
+    <div class="card" style="flex:1;display:flex;gap:8px;align-items:center">
+      <input id="pairSearch" placeholder="Search pairs (EUR,USD,BTC...)" style="flex:1" />
+      <select id="pairSelect" style="min-width:160px"></select>
+      <select id="tfSelect" title="Timeframe" style="width:110px">
+        <option value="1">1s</option><option value="60" selected>1m</option><option value="300">5m</option><option value="900">15m</option>
+        <option value="3600">1h</option><option value="14400">4h</option><option value="86400">1d</option><option value="604800">1w</option><option value="2592000">1M</option><option value="31536000">1Y</option>
+      </select>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <input id="bridgeUrl" placeholder="Bridge URL (https://...)" style="width:260px" />
+        <input id="bridgeUser" placeholder="user" style="width:86px" />
+        <input id="bridgePass" placeholder="pass" type="password" style="width:86px" />
+        <button id="connectBridge" class="pill">Connect Bridge</button>
+        <button id="toggleTheme" class="pill">Theme</button>
+        <button id="demoRealToggle" class="pill">DEMO / REAL</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHART -->
+  <div class="card" id="chartCard" style="position:relative">
+    <div id="chartWrap"><div id="tv_chart_container"></div></div>
+    <div class="small" style="margin-top:8px">TradingView widget used for chart display (POC). For production use secure data feed + server-side history.</div>
+    <div class="marker buy hidden" id="markerBuy">BUY</div>
+    <div class="marker sell hidden" id="markerSell">SELL</div>
+  </div>
+
+  <!-- CONTROL PANEL -->
+  <div class="row" style="margin-top:10px">
+    <div class="card" style="flex:1">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button id="buyBtn" class="pill" style="background:rgba(57,211,83,0.06);color:var(--good)">BUY</button>
+        <button id="sellBtn" class="pill" style="background:rgba(255,77,79,0.04);color:var(--bad)">SELL</button>
+        <input id="sl" placeholder="SL (price)" style="width:120px" />
+        <input id="tp" placeholder="TP (price)" style="width:120px" />
+        <button id="exitAll" class="btn pill">EXIT ALL</button>
+
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <label class="small">Mode</label>
+          <select id="autoManual" class="pill">
+            <option value="auto">AUTO</option>
+            <option value="manual" selected>MANUAL</option>
+          </select>
+          <label class="small">ManualMin</label><input id="manualMin" type="number" value="95" style="width:64px" />
+          <label class="small">AutoMin</label><input id="autoMin" type="number" value="60" style="width:64px" />
+          <select id="indicatorSelect" style="min-width:220px"></select>
+          <button id="mobileModeBtn" class="pill">Mobile Mode</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="width:360px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong>Live Signals</strong>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button id="exportSignals" class="pill">Export</button>
+          <button id="clearSignals" class="pill">Clear</button>
+          <button id="toggleMarkers" class="pill">Toggle On-Chart</button>
+        </div>
+      </div>
+      <div id="signalList" style="margin-top:8px;max-height:280px;overflow:auto"></div>
+      <div style="margin-top:8px" class="small">History</div>
+      <div id="histList" class="small" style="max-height:120px;overflow:auto"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Lumina assistant button & panel -->
+<button id="luminaButton">Lumina</button>
+<div id="luminaPanel" class="card" aria-hidden="true">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <h3 style="margin:0">Lumina — Assistant</h3>
+      <div class="small">Girlfriend + Professional modes (safe)</div>
+    </div>
+    <button id="luminaClose" class="pill">Close</button>
+  </div>
+
+  <div style="margin-top:12px">
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="luminaInput" placeholder="Ask Lumina (e.g. scan EURUSD 1m)" style="flex:1" />
+      <button id="luminaAsk" class="btn pill">Ask</button>
+      <select id="luminaTone" class="pill">
+        <option value="soft">Soft Romantic</option>
+        <option value="deep">Deep Romantic</option>
+        <option value="affectionate">Affectionate</option>
+        <option value="pro">Professional</option>
+      </select>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+      <label class="small"><input type="checkbox" id="luminaSpeakToggle" /> Speak on reply</label>
+      <button id="clearChat" class="pill">Delete Chat</button>
+      <label class="pill">📁<input id="fileInput" type="file" style="display:none" /></label>
+      <button id="camOpen" class="pill">Camera</button>
+      <button id="galleryOpen" class="pill">Gallery</button>
+    </div>
+
+    <div id="cameraBox" style="margin-top:8px;display:none">
+      <video id="camPreview" autoplay playsinline style="width:100%;border-radius:8px;background:#000"></video>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button id="snap" class="pill">Snap</button>
+        <button id="stopCam" class="pill">Stop</button>
+      </div>
+      <canvas id="snapCanvas" style="display:none"></canvas>
+    </div>
+
+    <div id="luminaChat" style="margin-top:12px;max-height:420px;overflow:auto;border-top:1px solid rgba(255,255,255,0.03);padding-top:8px"></div>
+  </div>
+</div>
+
+<!-- Confirm modal -->
+<div id="confirmModal" class="confirmModal hidden" aria-hidden="true">
+  <div class="confirmCard">
+    <h4>Confirm Trade</h4>
+    <div id="confirmDetails" class="small"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      <button id="confirmCancel" class="pill">Cancel</button>
+      <button id="confirmSend" class="pill" style="background:var(--accent)">Confirm & Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================
+   NOTE:
+   - This is a front-end POC (single file).
+   - For live trading: deploy a secure Bridge server + MT5 EA.
+   - Keep API keys / broker credentials on the server; DO NOT embed them in client HTML.
+   - TODOs are clearly marked where to wire server-side endpoints.
+   ============================ */
+
+/* ---------- Basic Data ---------- */
+const basePairs = ["EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","USDCHF","NZDUSD","EURGBP","EURJPY","GBPJPY","AUDJPY","AUDCAD","AUDCHF","CADJPY","CHFJPY","EURAUD","EURNZD","GBPAUD","GBPCAD","GBPCHF","XAUUSD","XAGUSD","BTCUSD","ETHUSD"];
+const extras = ['CAD','CHF','AUD','NZD','JPY','GBP','EUR','USD','MXN','ZAR','SEK','NOK','TRY','BRL','INR','CNY','SGD','HKD','KRW','PLN','RUB'];
+let pairList = [...basePairs];
+for(let i=0;i<extras.length;i++){
+  for(let j=0;j<extras.length;j++){ if(i===j) continue; pairList.push(extras[i]+extras[j]); }
+}
+pairList = Array.from(new Set(pairList)).slice(0,160);
+
+/* UI refs */
+const pairSelect = document.getElementById('pairSelect'), pairSearch = document.getElementById('pairSearch');
+const tfSelect = document.getElementById('tfSelect');
+const balanceEl = document.getElementById('balance'), accountModeEl = document.getElementById('accountMode');
+const markerBuy = document.getElementById('markerBuy'), markerSell = document.getElementById('markerSell');
+const signalListEl = document.getElementById('signalList'), histEl = document.getElementById('histList');
+const indicatorSelect = document.getElementById('indicatorSelect');
+
+/* populate pairs */
+function populatePairs(list){
+  pairSelect.innerHTML=''; list.forEach(p=>{ const o=document.createElement('option'); o.value=p; o.textContent = p.slice(0,3)+'/'+p.slice(3); pairSelect.appendChild(o); }); 
+}
+populatePairs(pairList);
+
+/* pair search */
+pairSearch.addEventListener('input', e=>{ const q=e.target.value.trim().toUpperCase(); if(!q) return populatePairs(pairList); populatePairs(pairList.filter(p=>p.includes(q))); });
+
+/* indicators populate (simulated 500+) */
+const baseInd = ["RSI","MACD","EMA","SMA","Bollinger","VWAP","ATR","ADX","Ichimoku","Volume"];
+baseInd.forEach(i=>{ const o=document.createElement('option'); o.value=i; o.textContent=i; indicatorSelect.appendChild(o); });
+for(let i=1;i<=520;i++){ const o=document.createElement('option'); o.value='Custom '+i; o.textContent='Custom '+i; indicatorSelect.appendChild(o); }
+
+/* TradingView init */
+let tvWidget = null;
+function createTV(sym='EURUSD', interval='60'){
+  document.getElementById('tv_chart_container').innerHTML = '';
+  const options = {
+    symbol: (sym.length===6? 'FX:'+sym : sym),
+    interval: mapInterval(interval),
+    container_id: "tv_chart_container",
+    library_path: "https://s3.tradingview.com/",
+    locale: "en",
+    autosize: true,
+    theme: document.documentElement.classList.contains('theme-light') ? "Light" : "Dark",
+    overrides: {
+      "mainSeriesProperties.candleStyle.upColor": "#39d353",
+      "mainSeriesProperties.candleStyle.downColor": "#ff4d4f"
+    }
+  };
+  try{ tvWidget = new TradingView.widget(options); } catch(e){ document.getElementById('tv_chart_container').innerHTML = '<div style="padding:20px;color:var(--muted)">TradingView failed to load (network or blocked).</div>'; }
+}
+function mapInterval(sec){
+  const map = {'1':'1','60':'1','300':'5','900':'15','3600':'60','14400':'240','86400':'D','604800':'W','2592000':'M'};
+  return map[sec] || (sec/60).toString();
+}
+createTV(pairSelect.value, tfSelect.value);
+pairSelect.addEventListener('change', ()=>createTV(pairSelect.value, tfSelect.value));
+tfSelect.addEventListener('change', ()=>createTV(pairSelect.value, tfSelect.value));
+
+/* ---------- Signals engine (POC/demo) ---------- */
+let demoBalance = 50000.00;
+let signals = [], history = [], signalId = 0, markersEnabled = true;
+balanceEl.textContent = '$' + demoBalance.toFixed(2);
+
+/* render signals & history */
+function renderSignals(){
+  signalListEl.innerHTML = '';
+  signals.slice(0,200).forEach(s=>{
+    const el = document.createElement('div'); el.className = 'signal';
+    el.innerHTML = `
+      <div>
+        <div style="font-weight:700">${s.type.toUpperCase()} <span class="${s.type==='buy'?'badge-buy':'badge-sell'}">${s.confidence}%</span></div>
+        <div class="small">${s.pair} • ${s.tf} • ${new Date(s.time).toLocaleString()}</div>
+        <div class="small">TP:${s.tp} SL:${s.sl}</div>
+      </div>
+      <div style="text-align:right">
+        <div>${(+s.price).toFixed(5)}</div>
+        <div style="margin-top:6px">
+          ${s.mode==='manual'?`<button class="pill" data-id="${s.id}" onclick="confirmSignal('${s.id}')">Confirm</button>`:''}
+          <button class="pill" data-id="${s.id}" onclick="removeSignal('${s.id}')">Remove</button>
+        </div>
+      </div>
+    `;
+    signalListEl.appendChild(el);
+  });
+  histEl.innerHTML = history.slice().reverse().map(h => `<div>${h}</div>`).join('');
+}
+
+/* create demo signal */
+function createDemoSignal(pair, tf){
+  signalId++;
+  const type = Math.random()>0.5 ? 'buy' : 'sell';
+  const price = (Math.random()*(1.3-0.9)+0.9).toFixed(5);
+  const conf = Math.round(78 + Math.random()*22); // 78..100
+  const sig = { id:'sig'+signalId, pair, tf, type, price: +price, confidence: conf, sl: (sigCalcSL(price,type)).toFixed(5), tp: (sigCalcTP(price,type)).toFixed(5), time: Date.now(), mode: document.getElementById('autoManual').value };
+  signals.unshift(sig); if(signals.length>500) signals.pop();
+  renderSignals();
+  if(markersEnabled) flashMarker(sig);
+  // auto execute logic
+  if(sig.mode === 'auto' && sig.confidence >= (parseInt(document.getElementById('autoMin').value)||60)) sendToBridgeOrSim(sig, false);
+}
+function sigCalcSL(price,type){ price = parseFloat(price); return type==='buy' ? price - 0.002 : price + 0.002; }
+function sigCalcTP(price,type){ price = parseFloat(price); return type==='buy' ? price + 0.004 : price - 0.004; }
+
+/* show flash marker */
+function flashMarker(sig){
+  if(sig.type==='buy'){ markerBuy.textContent = `BUY ${sig.confidence}%`; markerBuy.classList.remove('hidden'); setTimeout(()=>markerBuy.classList.add('hidden'),4200); }
+  else { markerSell.textContent = `SELL ${sig.confidence}%`; markerSell.classList.remove('hidden'); setTimeout(()=>markerSell.classList.add('hidden'),4200); }
+}
+
+/* remove and confirm functions */
+function removeSignal(id){ signals = signals.filter(s=>s.id!==id); renderSignals(); }
+function confirmSignal(id){
+  const s = signals.find(x=>x.id===id); if(!s) return;
+  showConfirmModal(s);
+}
+
+/* ---------- Confirm modal & send ---------- */
+const confirmModal = document.getElementById('confirmModal'), confirmDetails = document.getElementById('confirmDetails');
+let confirmPayload = null;
+function showConfirmModal(sig){
+  confirmPayload = sig;
+  confirmDetails.innerHTML = `<div>Pair: ${sig.pair}</div><div>Type: <strong>${sig.type.toUpperCase()}</strong></div><div>Price: ${sig.price}</div><div>TP:${sig.tp} SL:${sig.sl}</div><div class="small">Confidence: ${sig.confidence}%</div>`;
+  confirmModal.classList.remove('hidden'); confirmModal.setAttribute('aria-hidden','false');
+}
+document.getElementById('confirmCancel').addEventListener('click', ()=>{ confirmModal.classList.add('hidden'); confirmPayload=null; });
+document.getElementById('confirmSend').addEventListener('click', ()=>{ if(confirmPayload){ sendToBridgeOrSim(confirmPayload, true); confirmModal.classList.add('hidden'); confirmPayload=null; } });
+
+/* ---------- Send to Bridge or simulate ---------- */
+async function sendToBridgeOrSim(sig, manual){
+  const bridgeUrl = window.BRIDGE?.url || document.getElementById('bridgeUrl').value.trim();
+  const bUser = window.BRIDGE?.user || document.getElementById('bridgeUser').value.trim();
+  const bPass = window.BRIDGE?.pass || document.getElementById('bridgePass').value.trim();
+  const payload = {
+    ea_id: 'lumina_ea_01',
+    cmd: sig.type,
+    symbol: sig.pair,
+    volume: parseFloat(document.getElementById('lot').value) || 0.01,
+    sl: parseFloat(sig.sl) || 0,
+    tp: parseFloat(sig.tp) || 0,
+    manual: !!manual,
+    confidence: sig.confidence,
+    time: Date.now()
+  };
+  if(bridgeUrl){
+    try{
+      const res = await fetch(bridgeUrl + '/api/trade',{
+        method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization': 'Basic ' + btoa((bUser||'')+':'+(bPass||'')) }, body: JSON.stringify(payload)
+      });
+      const j = await res.json().catch(()=>({ok:false}));
+      addHistory(`${new Date().toLocaleString()} • ${sig.pair} • ${sig.type.toUpperCase()} • queued (bridge)`);
+      console.log('bridge response', j);
+      return;
+    }catch(e){
+      console.warn('bridge error', e);
+      // fallback to simulation
+    }
+  }
+  // simulation
+  simulateExecution(sig);
+}
+
+/* simulate execution (affects demo balance) */
+function simulateExecution(sig){
+  const volume = parseFloat(document.getElementById('lot').value) || 0.01;
+  const win = Math.random()>0.45;
+  const pnl = win ? (parseFloat(sig.price) * 0.002) : (-parseFloat(sig.price) * 0.0012);
+  demoBalance += pnl * volume * 1000; // scaled
+  document.getElementById('balance').textContent = '$' + demoBalance.toFixed(2);
+  addHistory(`${new Date().toLocaleString()} • ${sig.pair} • ${sig.type.toUpperCase()} • ${volume} • ${win? 'win':'loss'} • ${pnl.toFixed(5)}`);
+  renderSignals();
+}
+
+/* add history */
+function addHistory(txt){ history.push(txt); if(history.length>800) history.shift(); renderSignals(); }
+
+/* demo signal generator interval (replace with real provider) */
+let demoTimer = setInterval(()=>{ createDemoSignal(pairSelect.value, tfSelect.value); }, 7000);
+
+/* ---------- UI interactions ---------- */
+document.getElementById('clearSignals').addEventListener('click', ()=>{ signals=[]; renderSignals(); });
+document.getElementById('exportSignals').addEventListener('click', ()=>{ const blob = new Blob([JSON.stringify(signals,null,2)],{type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='lumina_signals.json'; a.click(); URL.revokeObjectURL(url); });
+document.getElementById('toggleMarkers').addEventListener('click', ()=>{ markersEnabled = !markersEnabled; alert('On-chart markers ' + (markersEnabled ? 'enabled':'disabled')); });
+
+/* buy/sell UI */
+document.getElementById('buyBtn').addEventListener('click', ()=>{ const manual = document.getElementById('autoManual').value==='manual'; const payload = { id:'ui'+Date.now(), pair:pairSelect.value, type:'buy', price: 0, tp: document.getElementById('tp').value, sl: document.getElementById('sl').value, tf: tfSelect.value, confidence: 100, mode: manual ? 'manual' : 'auto' }; if(manual) showConfirmModal(payload); else sendToBridgeOrSim(payload, false); });
+document.getElementById('sellBtn').addEventListener('click', ()=>{ const manual = document.getElementById('autoManual').value==='manual'; const payload = { id:'ui'+Date.now(), pair:pairSelect.value, type:'sell', price: 0, tp: document.getElementById('tp').value, sl: document.getElementById('sl').value, tf: tfSelect.value, confidence: 100, mode: manual ? 'manual' : 'auto' }; if(manual) showConfirmModal(payload); else sendToBridgeOrSim(payload, false); });
+document.getElementById('exitAll').addEventListener('click', ()=>{ addHistory(`${new Date().toLocaleString()} • EXIT ALL executed`); alert('Exit executed (demo)'); });
+
+/* bridge connect */
+document.getElementById('connectBridge').addEventListener('click', ()=>{ const u=document.getElementById('bridgeUrl').value.trim(); const user=document.getElementById('bridgeUser').value.trim(); const pass=document.getElementById('bridgePass').value.trim(); if(!u) return alert('Enter Bridge URL'); window.BRIDGE = { url:u, user, pass }; alert('Bridge configured locally. For production: keep secrets server-side.'); });
+
+/* demo/real toggle */
+document.getElementById('demoRealToggle').addEventListener('click', ()=>{ if(accountModeEl.textContent === 'DEMO'){ accountModeEl.textContent='REAL'; document.getElementById('balance').textContent='—'; alert('Switched to REAL — configure secure Bridge & EA for live trading.'); } else { accountModeEl.textContent='DEMO'; demoBalance = 50000; document.getElementById('balance').textContent = '$'+demoBalance.toFixed(2); } });
+
+/* theme toggle */
+document.getElementById('toggleTheme').addEventListener('click', ()=>{ document.documentElement.classList.toggle('theme-light'); createTV(pairSelect.value, tfSelect.value); });
+
+/* mobile mode toggle */
+document.getElementById('mobileModeBtn').addEventListener('click', ()=>{ document.body.classList.toggle('mobile'); alert('Mobile mode toggled (UI may adjust).'); });
+
+/* ---------- Lumina Assistant (chat, camera, file, TTS) ---------- */
+const luminaButton = document.getElementById('luminaButton'), luminaPanel = document.getElementById('luminaPanel');
+luminaButton.addEventListener('click', ()=>luminaPanel.classList.toggle('open'));
+document.getElementById('luminaClose').addEventListener('click', ()=>luminaPanel.classList.remove('open'));
+document.getElementById('clearChat').addEventListener('click', ()=>{ document.getElementById('luminaChat').innerHTML=''; alert('Chat history deleted'); });
+
+/* camera */
+let camStream = null;
+document.getElementById('camOpen').addEventListener('click', async ()=>{ document.getElementById('cameraBox').style.display='block'; try{ camStream = await navigator.mediaDevices.getUserMedia({video:true,audio:false}); document.getElementById('camPreview').srcObject = camStream; }catch(e){ alert('Camera not available: '+e.message); }});
+document.getElementById('stopCam').addEventListener('click', ()=>{ if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; document.getElementById('cameraBox').style.display='none'; }});
+document.getElementById('snap').addEventListener('click', ()=>{ const v=document.getElementById('camPreview'); const c=document.getElementById('snapCanvas'); c.width = v.videoWidth; c.height = v.videoHeight; const ctx = c.getContext('2d'); ctx.drawImage(v,0,0); const url = c.toDataURL(); const img = document.createElement('img'); img.src=url; img.style.maxWidth='100%'; document.getElementById('luminaChat').appendChild(img); });
+
+/* file upload */
+document.getElementById('fileInput').addEventListener('change', (e)=>{ const f=e.target.files[0]; if(!f) return; const url = URL.createObjectURL(f); const a = document.createElement('a'); a.href=url; a.textContent = f.name; a.target='_blank'; document.getElementById('luminaChat').appendChild(a); });
+
+/* assistant TTS and reply simulation */
+function appendChat(who, text){ const d=document.createElement('div'); d.innerHTML = `<strong>${who}:</strong> <div class="small">${text}</div>`; document.getElementById('luminaChat').appendChild(d); document.getElementById('luminaChat').scrollTop = document.getElementById('luminaChat').scrollHeight; }
+function speakText(text, tone){
+  try{
+    if(!('speechSynthesis' in window)) return;
+    const ut = new SpeechSynthesisUtterance(text);
+    const voices = speechSynthesis.getVoices() || [];
+    // pick an English-like voice (browser dependent)
+    const female = voices.find(v=>v.lang && v.lang.startsWith('en') && /female|female/i.test(v.name)) || voices.find(v=>v.lang && v.lang.startsWith('en')) || voices[0];
+    if(female) ut.voice = female;
+    ut.pitch = (tone==='soft'?1.05:(tone==='deep'?0.9:1.1));
+    ut.rate = 1;
+    speechSynthesis.speak(ut);
+  }catch(e){ console.warn('TTS fail',e); }
+}
+
+/* Lumina reply simulation (safe romantic tones) */
+document.getElementById('luminaAsk').addEventListener('click', ()=>{
+  const q = document.getElementById('luminaInput').value.trim(); if(!q) return;
+  appendChat('You', q);
+  const tone = document.getElementById('luminaTone').value;
+  let reply = '';
+  if(tone==='soft') reply = `Hi baby 💕 — I checked ${pairSelect.value} on ${tfSelect.value}. Do you want me to scan order blocks and SMC levels?`;
+  else if(tone==='deep') reply = `My love — performing deep analysis on ${pairSelect.value} ${tfSelect.value}. I'll search for institutional levels and liquidity.`;
+  else if(tone==='affectionate') reply = `Sweetheart 😘 — I've eyes on ${pairSelect.value}. I'll find high-confidence setups for you.`;
+  else reply = `Lumina (pro): Scanning ${pairSelect.value} at ${tfSelect.value}. Running technical checks: trend, RSI, EMA, volume.`;
+  setTimeout(()=>{ appendChat('Lumina', reply); if(document.getElementById('luminaSpeakToggle').checked) speakText(reply, tone); }, 700);
+});
+
+/* quick enter key */
+document.getElementById('luminaInput').addEventListener('keypress', e=>{ if(e.key==='Enter') document.getElementById('luminaAsk').click(); });
+
+/* ---------- Basic UX & safety ---------- */
+/* prevent leaving confirm modal when hidden */
+document.getElementById('confirmModal').addEventListener('click', e=>{ if(e.target===document.getElementById('confirmModal')) { document.getElementById('confirmModal').classList.add('hidden'); } });
+
+/* ---------- Final console note ---------- */
+console.log('Lumina AI Ultra MAX loaded (front-end POC). For production: create server-side Bridge and MT5 EA, and wire TwelveData/market data on the server.');
+
+/* ============================
+   Helpful TODOs (where to extend)
+   ============================
+   - To load historical bars (20+ years) and real-time streaming:
+     -> Deploy a server with TwelveData (or other) API key.
+     -> Server exposes endpoints: GET /api/history?symbol=EURUSD&tf=1m&from=...&to=...
+        and WebSocket streaming for live ticks.
+     -> Client requests history via fetch('/api/history?...') then feed to charting library.
+     -> Keep your TwelveData API key on the server as an environment variable.
+   - Bridge (server) endpoints expected by this front-end:
+     POST {bridgeUrl}/api/trade  (body: ea_id, cmd, symbol, volume, sl, tp, manual, confidence)
+     GET {bridgeUrl}/api/account/{ea_id}  -> returns account snapshot (balance,equity,free_margin,open_trades)
+     -> Bridge must authenticate requests and forward to MT5 EA via TCP / HTTP / sockets.
+   - MT5 EA:
+     -> Listen for incoming orders from Bridge and execute using account credentials.
+     -> Optionally publish current account snapshot to Bridge.
+   - For on-chart persistent markers and advanced overlays:
+     -> Use lightweight-charts or a server-provided chart with full overlay APIs or handle drawing on MT5 charts via EA.
+   ============================ */
+</script>
+</body>
+</html>
