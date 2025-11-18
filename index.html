@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lumina AI — Ultra Maxx Power</title>
+
+    <!-- TradingView Lightweight Charts -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+
+    <!-- Google Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+    <!-- TOP HEADER -->
+    <div class="top-bar">
+        <div class="left-section">
+            <span class="logo">💎 Lumina AI</span>
+
+            <!-- Account Mode -->
+            <select id="accountMode">
+                <option value="DEMO">Demo ($50,000)</option>
+                <option value="REAL">Real (MT5)</option>
+            </select>
+
+            <!-- Pair Selector -->
+            <select id="pairSelector"></select>
+
+            <!-- Timeframe -->
+            <select id="timeframeSelector">
+                <option value="1m">1m</option>
+                <option value="5m">5m</option>
+                <option value="15m">15m</option>
+                <option value="1h">1h</option>
+                <option value="4h">4h</option>
+                <option value="1d">1D</option>
+            </select>
+
+            <!-- Mode -->
+            <select id="tradeMode">
+                <option value="AUTO">Auto Mode</option>
+                <option value="MANUAL">Manual Mode</option>
+            </select>
+
+            <!-- Manual Confidence -->
+            <input id="manualMin" type="number" value="95" />
+
+            <!-- Auto Confidence -->
+            <input id="autoMin" type="number" value="100" />
+        </div>
+
+        <div class="right-section">
+            <!-- Lot Size -->
+            <div class="lot-box">
+                <button id="lotMinus">-</button>
+                <input id="lotSize" type="number" step="0.01" value="0.01" />
+                <button id="lotPlus">+</button>
+            </div>
+
+            <!-- Theme -->
+            <button id="themeToggle" class="theme-btn">🌙</button>
+
+            <!-- Open AI Assistant -->
+            <button id="assistantBtn" class="assistant-btn">🤖</button>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-body">
+
+        <!-- LEFT SIDE TRADING CHART -->
+        <div class="chart-section">
+            <div id="tvChart" class="chart-box"></div>
+
+            <!-- BUY SELL BUTTONS -->
+            <div class="trade-buttons">
+                <button class="buy-btn" id="buyNow">BUY</button>
+                <button class="sell-btn" id="sellNow">SELL</button>
+            </div>
+
+            <!-- SIGNAL LIST -->
+            <div class="signals-list" id="signalsList"></div>
+        </div>
+
+        <!-- AI ASSISTANT PANEL -->
+        <div id="assistantPanel" class="assistant-panel">
+
+            <div class="assistant-header">
+                <span>Lumina AI Assistant</span>
+                <button id="closeAssistant">✖</button>
+            </div>
+
+            <div class="assistant-messages" id="assistantMessages"></div>
+
+            <div class="assistant-input">
+                <input type="text" id="assistantText" placeholder="Ask Lumina…" />
+
+                <button id="micButton">🎤</button>
+                <button id="fileButton">📁</button>
+                <button id="cameraButton">📷</button>
+
+                <button id="sendAssistant">Send</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- JS -->
+    <script src="script.js"></script>
+</body>
+</html>
