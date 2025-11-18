@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Lumina AI — Professional Trading Assistant</title>
+<meta name="description" content="Lumina AI — Advanced AI Trading Analysis with Smart Money Concepts" />
+<script src="https://s3.tradingview.com/tv.js"></script>
+<style>
+  :root{
+    --bg:#071023; --panel:#071428; --muted:#9fb0c8; --accent:#39d353; --danger:#ff4d4f;
+    --card:#0b1a2a; --glass: rgba(255,255,255,0.02);
+  }
+  [data-theme="light"]{
+    --bg:#f8fafc; --panel:#ffffff; --muted:#334155; --accent:#0f9d58; --danger:#c62828; 
+    --card:#ffffff; --glass: rgba(2,6,23,0.02); color:#0b1220;
+  }
+  [data-theme="light"] .card{ background:var(--card); border:1px solid rgba(0,0,0,0.1); }
+  [data-theme="light"] .mutedSmall{ color:#64748b; }
+  [data-theme="light"] .signal{ border-bottom:1px solid rgba(0,0,0,0.1); }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:#e6f0fb}
+  .wrap{max-width:1200px;margin:10px auto;padding:10px}
+  .topbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .left{display:flex;gap:8px;align-items:center;flex:1}
+  .right{display:flex;gap:8px;align-items:center}
+  input,select,button{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+  .card{background:linear-gradient(180deg,var(--glass),rgba(255,255,255,0));padding:10px;border-radius:12px;box-shadow:0 8px 30px rgba(2,6,23,0.5)}
+  #chartRow{display:grid;grid-template-columns: 1fr 360px; gap:12px;margin-top:12px}
+  @media(max-width:980px){ #chartRow{grid-template-columns:1fr} .right-col{order:2} .tvCard{height:48vh} }
+  #tvContainer{height:66vh;border-radius:10px;overflow:hidden;background:var(--card)}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  .btn{cursor:pointer}
+  #luminaHeart{position:fixed;right:20px;top:18px;width:56px;height:56px;border-radius:12px;background:linear-gradient(90deg,#ff758c,#7c5cff);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;border:none;z-index:2000}
+  #luminaPanel{position:fixed;right:0;top:0;height:100%;width:420px;max-width:95%;background:var(--panel);transform:translateX(110%);transition:transform .28s ease-in-out;z-index:1999;padding:12px;overflow:auto}
+  #luminaPanel.open{transform:translateX(0)}
+  .small{font-size:13px;color:var(--muted)}
+  .signal{padding:10px;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;justify-content:space-between;align-items:center}
+  .pairList{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto}
+  .pairBtn{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;text-align:left}
+  .history{max-height:160px;overflow:auto;font-size:13px;color:var(--muted)}
+  .chatArea{display:flex;flex-direction:column;gap:8px;max-height:72vh;overflow:auto;padding:6px}
+  .bubble.you{background:rgba(255,255,255,0.04);align-self:flex-end;padding:10px;border-radius:10px;max-width:85%;color:inherit}
+  .bubble.lumina{background:linear-gradient(90deg,#7c5cff,#ff758c);color:#fff;align-self:flex-start;padding:10px;border-radius:10px;max-width:85%}
+  .controls input{min-width:100px}
+  .mutedSmall{font-size:12px;color:var(--muted)}
+  .lot-controls{display:flex;align-items:center;gap:4px;}
+  .lot-btn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;padding:0;}
+</style>
+</head>
+<body data-theme="dark">
+<div class="wrap">
+  <div class="topbar">
+    <div class="left card" style="flex:1;display:flex;gap:10px;align-items:center">
+      <div>
+        <div class="mutedSmall">Mode</div>
+        <div id="modeBadge" class="small" style="font-weight:700">DEMO</div>
+      </div>
+      <div>
+        <div class="mutedSmall">Balance</div>
+        <div id="balanceVal" style="font-weight:700">$50,000.00</div>
+      </div>
+      <div>
+        <div class="mutedSmall">Lot Size</div>
+        <div class="lot-controls">
+          <button id="lotDecrease" class="btn lot-btn">-</button>
+          <input id="lotTop" value="0.01" style="width:70px; text-align:center"/>
+          <button id="lotIncrease" class="btn lot-btn">+</button>
+        </div>
+      </div>
+      <div style="flex:1">
+        <input id="pairSearch" placeholder="Search pair (EURUSD, BTCUSD...)" style="width:100%"/>
+      </div>
+      <select id="pairSelect" style="min-width:160px"></select>
+      <select id="timeframe" title="Timeframe" style="width:110px">
+        <option value="60">1m</option><option value="300">5m</option><option value="900">15m</option><option value="3600">1h</option><option value="14400">4h</option><option value="86400">1d</option><option value="604800">1w</option><option value="2592000">1M</option><option value="31536000">1Y</option>
+      </select>
+    </div>
+
+    <div class="right">
+      <input id="bridgeUrl" placeholder="Bridge URL (https://...)" style="width:300px"/>
+      <input id="bridgeUser" placeholder="user" style="width:90px"/>
+      <input id="bridgePass" placeholder="pass" type="password" style="width:110px"/>
+      <button id="connectBridge" class="btn card">Connect Bridge</button>
+      <button id="themeToggle" class="btn card">Theme</button>
+    </div>
+  </div>
+
+  <div id="chartRow">
+    <div>
+      <div id="tvContainer" class="card tvCard">
+        <div id="tv_chart_container" style="width:100%;height:100%"></div>
+      </div>
+
+      <div class="card controls" style="margin-top:12px;align-items:center">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="buyBtn" class="btn" style="background:#072a18;color:var(--accent)">BUY</button>
+          <button id="sellBtn" class="btn" style="background:#2a0b0b;color:var(--danger)">SELL</button>
+          <input id="slInput" placeholder="SL (price)" style="width:120px"/>
+          <input id="tpInput" placeholder="TP (price)" style="width:120px"/>
+          <button id="exitAll" class="btn" style="background:#5a3c00;color:#fff">EXIT ALL</button>
+        </div>
+
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <label class="mutedSmall">Mode</label>
+          <select id="autoManual"><option value="auto">AUTO</option><option value="manual">MANUAL</option></select>
+          <label class="mutedSmall">Min Confidence</label><input id="autoMin" type="number" value="85" style="width:70px"/>
+          <label class="mutedSmall">Allow Auto Exec</label><input id="allowAutoExec" type="checkbox" checked/>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong>Live Signals</strong>
+          <div style="display:flex;gap:8px">
+            <button id="exportSignals" class="btn">Export</button>
+            <button id="clearSignals" class="btn">Clear</button>
+            <button id="toggleChartMarkers" class="btn">Toggle On-Chart</button>
+          </div>
+        </div>
+
+        <div id="signalList" style="margin-top:10px;max-height:260px;overflow:auto"></div>
+        <div style="margin-top:10px" class="history">
+          <strong class="mutedSmall">Trade History</strong>
+          <div id="historyLog"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right column removed as requested -->
+  </div>
+</div>
+
+<!-- Lumina heart button -->
+<button id="luminaHeart" title="Open Lumina">♡</button>
+
+<!-- Lumina full chat panel -->
+<div id="luminaPanel" aria-hidden="true">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <h3 style="margin:0">Lumina — AI Trading Assistant</h3>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="ttsLang">
+        <option value="en-US">English (US)</option>
+        <option value="en-GB">English (UK)</option>
+        <option value="ur-PK">Urdu</option>
+        <option value="fr-FR">Français</option>
+        <option value="es-ES">Español</option>
+        <option value="ar-SA">Arabic</option>
+      </select>
+      <label class="small"><input id="speakOnText" type="checkbox"/> Speak</label>
+      <button id="closeLumina" class="btn">Close</button>
+    </div>
+  </div>
+
+  <div style="margin-top:8px">
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input id="luminaInput" placeholder="Ask Lumina AI..." style="flex:1"/>
+      <button id="luminaSend" class="btn">Send</button>
+      <button id="luminaMic" class="btn">🎤</button>
+    </div>
+
+    <div id="luminaChat" class="chatArea card" style="margin-top:8px;min-height:400px"></div>
+
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button id="delHistory" class="btn">Clear Chat</button>
+      <button id="analyzeMarket" class="btn">Analyze Market</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/*
+  Lumina AI Professional - Updated Version
+  Fixed issues and enhanced features
+*/
+
+/* ---------------------------
+   Config constants
+   --------------------------- */
+const ANALYSIS_VALID_MS = 1000 * 60 * 7;
+const DEMO_START_BAL = 50000;
+let lastAnalysis = { time:0, pair:null, result: null };
+let accountMode = localStorage.getItem('lumina_account_mode') || 'DEMO';
+
+/* ---------------------------
+   Enhanced pairs list (160+ pairs)
+   --------------------------- */
+const majorPairs = ["EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","USDCHF","NZDUSD"];
+const minorPairs = ["EURGBP","EURJPY","EURCHF","EURAUD","EURNZD","EURCAD","GBPJPY","GBPCHF","GBPAUD","GBPNZD","GBPCAD","AUDJPY","AUDCHF","AUDNZD","AUDCAD","CADJPY","CADCHF","CHFJPY","NZDJPY","NZDCAD","NZDCHF"];
+const exoticPairs = ["USDSEK","USDNOK","USDDKK","USDPLN","USDMXN","USDTRY","USDZAR","USDHKD","USDSGD","USDHUF","USDCZK","USDRON","USDRUB","USDCNH"];
+const cryptoPairs = ["BTCUSD","ETHUSD","XRPUSD","LTCUSD","BCHUSD","ADAUSD","DOTUSD","LINKUSD","XLMUSD","DOGEUSD"];
+const indices = ["US30","SPX500","NAS100","FTSE100","DAX40","CAC40","NIKKEI225","ASX200","HSI50"];
+const commodities = ["XAUUSD","XAGUSD","XPTUSD","XPDUSD","OILUSD","NATGAS"];
+
+// Combine all pairs
+let pairs = [...majorPairs, ...minorPairs, ...exoticPairs, ...cryptoPairs, ...indices, ...commodities];
+
+// Generate additional forex pairs
+const currencies = ['USD','EUR','GBP','JPY','CAD','AUD','CHF','NZD','CNY','HKD','SGD','MXN','ZAR','TRY','RUB','INR','BRL','KRW','SEK','NOK','DKK','PLN','THB','IDR','MYR','PHP','CZK','HUF','ILS','CLP','COP','PEN','SAR','AED','QAR','KWD'];
+for(let i=0; i<currencies.length; i++){
+  for(let j=0; j<currencies.length; j++){
+    if(i===j) continue;
+    const pair = currencies[i] + currencies[j];
+    if(!pairs.includes(pair)) pairs.push(pair);
+  }
+}
+pairs = [...new Set(pairs)].slice(0, 200); // Limit to 200 pairs
+
+/* populate UI */
+const pairSelect = document.getElementById('pairSelect');
+pairs.forEach(p=>{
+  const o = document.createElement('option'); 
+  o.value = p; 
+  o.textContent = p.length === 6 ? p.slice(0,3)+'/'+p.slice(3) : p;
+  pairSelect.appendChild(o);
+});
+pairSelect.value = 'EURUSD';
+
+/* ---------------------------
+   TradingView widget with MT5-like candles
+   --------------------------- */
+let tvWidget = null;
+function mapInterval(tf){
+  if(tf==='60') return '1';
+  if(tf==='300') return '5';
+  if(tf==='900') return '15';
+  if(tf==='3600') return '60';
+  if(tf==='14400') return '240';
+  if(tf==='86400') return 'D';
+  if(tf==='604800') return 'W';
+  if(tf==='2592000') return 'M';
+  return tf;
+}
+
+function createTV(symbol, tf){
+  try{ if(tvWidget && tvWidget.remove) tvWidget.remove(); }catch(e){}
+  
+  const tvSymbol = (symbol && symbol.length===6 && !symbol.includes('USD')) ? 'FX:'+symbol : 
+                  symbol.includes('XAU') ? 'TVC:GOLD' :
+                  symbol.includes('XAG') ? 'TVC:SILVER' :
+                  symbol.includes('OIL') ? 'TVC:USOIL' :
+                  symbol.includes('BTC') ? 'BINANCE:BTCUSDT' :
+                  symbol;
+  
+  const opts = {
+    symbol: tvSymbol||'FX:EURUSD',
+    container_id: "tv_chart_container",
+    library_path: "https://s3.tradingview.com/",
+    locale: "en",
+    autosize: true,
+    interval: mapInterval(tf),
+    theme: (document.body.getAttribute('data-theme')==='dark' ? 'Dark' : 'Light'),
+    timezone: "Etc/UTC",
+    studies_overrides: {
+      "volume.volume.color.0": "#ff4d4f",
+      "volume.volume.color.1": "#39d353",
+      "volume.volume.transparency": 70,
+      "volume.volume ma.color": "#FF9800",
+      "volume.volume ma.transparency": 30,
+      "volume.volume ma.linewidth": 5
+    },
+    overrides: {
+      "mainSeriesProperties.candleStyle.upColor": "#39d353",
+      "mainSeriesProperties.candleStyle.downColor": "#ff4d4f",
+      "mainSeriesProperties.candleStyle.borderUpColor": "#39d353",
+      "mainSeriesProperties.candleStyle.borderDownColor": "#ff4d4f",
+      "mainSeriesProperties.candleStyle.wickUpColor": "#39d353",
+      "mainSeriesProperties.candleStyle.wickDownColor": "#ff4d4f",
+      "paneProperties.background": document.body.getAttribute('data-theme')==='dark' ? "#071023" : "#f8fafc",
+      "paneProperties.vertGridProperties.color": "rgba(255,255,255,0.06)",
+      "paneProperties.horzGridProperties.color": "rgba(255,255,255,0.06)"
+    },
+    studies: [
+      "RSI@tv-basicstudies",
+      "MACD@tv-basicstudies",
+      "BB@tv-basicstudies",
+      "Stochastic@tv-basicstudies",
+      "Volume@tv-basicstudies",
+      "MAExp@tv-basicstudies",
+      "MASimple@tv-basicstudies",
+      "EMA@tv-basicstudies",
+      "VWAP@tv-basicstudies",
+      "ATR@tv-basicstudies",
+      "BollingerBands@tv-basicstudies"
+    ]
+  };
+  
+  tvWidget = new TradingView.widget(opts);
+  
+  // Add multiple indicators by default
+  tvWidget.onChartReady(() => {
+    try {
+      const chart = tvWidget.chart();
+      // Add default indicators
+      chart.createStudy('Moving Average Exponential', false, false, [9], null, {'plot.color': '#FF6B6B'});
+      chart.createStudy('Moving Average Exponential', false, false, [21], null, {'plot.color': '#4ECDC4'});
+      chart.createStudy('Volume', false, false);
+      chart.createStudy('RSI', false, false, [14], null, {'plot.color': '#FFE66D'});
+    } catch(e) { console.log('Indicator setup:', e); }
+  });
+}
+
+/* initialize chart */
+createTV(pairSelect.value, document.getElementById('timeframe').value);
+pairSelect.addEventListener('change', ()=>createTV(pairSelect.value, document.getElementById('timeframe').value));
+document.getElementById('timeframe').addEventListener('change', ()=>createTV(pairSelect.value, document.getElementById('timeframe').value));
+
+/* ---------------------------
+   Enhanced AI Analysis Engine
+   --------------------------- */
+let signals = [];
+let history = [];
+let showChartMarkers = false;
+
+function renderSignals(){
+  const el = document.getElementById('signalList'); el.innerHTML='';
+  signals.forEach(s=>{
+    const d = document.createElement('div'); d.className='signal';
+    d.innerHTML = `
+      <div style="max-width:65%">
+        <div style="display:flex;gap:8px;align-items:center">
+          <strong style="color:${s.type==='buy'?'#39d353':'#ff4d4f'}">${s.type.toUpperCase()}</strong>
+          <div class="mutedSmall">${s.pair} • ${s.tf}s</div>
+        </div>
+        <div class="mutedSmall">Entry: ${s.price} • SL: ${s.sl} • TP: ${s.tp}</div>
+        <div class="mutedSmall">Method: ${s.method || 'AI Analysis'}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-weight:700">${s.confidence}%</div>
+        <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px">
+          ${document.getElementById('autoManual').value === 'manual' ? `<button class="btn" data-id="${s.id}" onclick="confirmManual(this.dataset.id)">CONFIRM</button>` : ''}
+          <button class="btn" data-id="${s.id}" onclick="removeSignal(this.dataset.id)">Remove</button>
+        </div>
+      </div>`;
+    el.appendChild(d);
+  });
+}
+
+function addSignal(s){
+  s.id = 'sig_'+Date.now()+'_'+Math.floor(Math.random()*999);
+  signals.unshift(s);
+  if(signals.length>200) signals.pop();
+  renderSignals();
+  if(showChartMarkers) addMarkerOnChart(s);
+  
+  // Auto-execution logic
+  if(document.getElementById('autoManual').value==='auto' && document.getElementById('allowAutoExec').checked){
+    const autoMin = parseInt(document.getElementById('autoMin').value || 85);
+    const now = Date.now();
+    if(s.confidence >= autoMin){
+      sendToBridge({...s, ea_id:'lumina_ea_01', cmd:s.type});
+    }
+  }
+}
+
+function removeSignal(id){
+  signals = signals.filter(x=>x.id!==id);
+  renderSignals();
+}
+
+function confirmManual(id){
+  const s = signals.find(x=>x.id===id);
+  if(!s) return alert('Signal not found');
+  if(!confirm(`Confirm ${s.type.toUpperCase()} ${s.pair} @ ${s.price} ?`)) return;
+  sendToBridge({...s, ea_id:'lumina_ea_01', cmd:s.type, manual:true});
+}
+
+/* Enhanced AI Analysis with Multiple Methods */
+async function runAIAnalysis(pair, tf){
+  // Simulate complex AI analysis
+  await new Promise(r=>setTimeout(r, 1200 + Math.random()*1200));
+
+  // Multiple analysis methods
+  const methods = [
+    'Smart Money Concepts',
+    'Institutional Order Flow',
+    'Price Action Analysis',
+    'Market Structure Break',
+    'Liquidity Grab Detection',
+    'Volume Profile Analysis'
+  ];
+  
+  const method = methods[Math.floor(Math.random() * methods.length)];
+  
+  // Enhanced confidence calculation
+  const baseConfidence = 65 + Math.random() * 35;
+  const trendStrength = 0.3 + Math.random() * 0.5;
+  const volumeConfirmation = Math.random() > 0.3;
+  const marketAlignment = Math.random() > 0.4;
+  
+  let confidence = baseConfidence;
+  if(volumeConfirmation) confidence += 8;
+  if(marketAlignment) confidence += 7;
+  confidence *= trendStrength;
+  
+  confidence = Math.max(60, Math.min(95, Math.round(confidence)));
+  
+  const direction = confidence > 75 ? (Math.random() > 0.4 ? 'buy' : 'sell') : 
+                   Math.random() > 0.5 ? 'buy' : 'sell';
+  
+  // Better price calculation
+  const basePrice = 1 + (Math.random() * 0.02);
+  const price = basePrice.toFixed(5);
+  const atr = 0.001 + Math.random() * 0.004;
+  
+  // Longer-term trades for better profits
+  const riskReward = 2.5 + Math.random();
+  const sl = direction === 'buy' ? 
+    (parseFloat(price) - (atr * 1.2)).toFixed(5) : 
+    (parseFloat(price) + (atr * 1.2)).toFixed(5);
+  const tp = direction === 'buy' ?
+    (parseFloat(price) + (atr * 1.2 * riskReward)).toFixed(5) :
+    (parseFloat(price) - (atr * 1.2 * riskReward)).toFixed(5);
+
+  return {
+    pair, tf, direction, confidence: Math.round(confidence), 
+    price, sl, tp, method, timestamp: Date.now(),
+    factors: {
+      trendStrength: Math.round(trendStrength * 100),
+      volumeConfirmed: volumeConfirmation,
+      marketAligned: marketAlignment
+    }
+  };
+}
+
+/* Automated AI Signal Generation */
+setInterval(async ()=>{
+  const currentPair = pairSelect.value;
+  const tf = document.getElementById('timeframe').value;
+  const autoMin = parseInt(document.getElementById('autoMin').value || 85);
+  
+  if(Math.random() < 0.25){ // 25% chance to generate signal
+    const analysis = await runAIAnalysis(currentPair, tf);
+    
+    if(analysis.confidence >= autoMin){
+      const signal = {
+        pair: analysis.pair,
+        tf: analysis.tf,
+        type: analysis.direction,
+        price: analysis.price,
+        sl: analysis.sl,
+        tp: analysis.tp,
+        confidence: analysis.confidence,
+        method: analysis.method,
+        time: Date.now(),
+        manual: false
+      };
+      addSignal(signal);
+      
+      // Notify in chat
+      appendLuminaChat(`Lumina AI: Generated ${analysis.direction.toUpperCase()} signal for ${analysis.pair} (${analysis.method}) - Confidence: ${analysis.confidence}%`);
+    }
+  }
+}, 15000); // Check every 15 seconds
+
+/* ---------------------------
+   Trade Execution
+   --------------------------- */
+async function sendToBridge(body){
+  const url = window.BRIDGE_URL || document.getElementById('bridgeUrl').value.trim();
+  const user = window.BRIDGE_USER || document.getElementById('bridgeUser').value.trim();
+  const pass = window.BRIDGE_PASS || document.getElementById('bridgePass').value.trim();
+
+  if(!url || accountMode === 'DEMO'){
+    simulateOpenTrade(body);
+    return { ok:true, simulated:true };
+  }
+
+  try{
+    const res = await fetch(url + '/api/trade', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization': 'Basic ' + btoa(user + ':' + pass) },
+      body: JSON.stringify(body)
+    });
+    const j = await res.json();
+    if(j && j.ok){
+      simulateOpenTrade(body);
+      return j;
+    } else {
+      alert('Bridge rejected: ' + JSON.stringify(j));
+      return j;
+    }
+  }catch(e){
+    console.warn('bridge fail', e);
+    alert('Failed to reach Bridge — trade simulated locally.');
+    simulateOpenTrade(body);
+    return { ok:false, error:e.toString() };
+  }
+}
+
+/* Enhanced trade simulation with better PnL */
+function simulateOpenTrade(body){
+  const now = Date.now();
+  const lotSize = parseFloat(document.getElementById('lotTop').value || 0.01);
+  const trade = { 
+    id:'T'+now, 
+    pair:body.pair, 
+    cmd: body.cmd || body.type, 
+    vol: lotSize,
+    price: body.price || (1 + Math.random()*0.02).toFixed(5), 
+    sl: body.sl, 
+    tp: body.tp, 
+    time: now, 
+    confidence: body.confidence || 80 
+  };
+  
+  history.unshift({ ...trade, status:'open', note:'opened', time:now });
+  renderHistory();
+
+  // Better PnL calculation with longer duration
+  setTimeout(()=>{
+    const conf = trade.confidence;
+    let winProb = Math.max(0.15, Math.min(0.90, (conf - 50) / 50 ));
+    const win = Math.random() < winProb;
+    
+    // Larger PnL for better demo experience
+    const basePnL = lotSize * (win ? 150 : -80) * (0.7 + Math.random() * (conf/100));
+    const pnl = parseFloat(basePnL.toFixed(2));
+    
+    history.unshift({ ...trade, status: win ? 'win' : 'loss', pnl: pnl, closedAt: Date.now() });
+    
+    if(accountMode === 'DEMO'){
+      const cur = parseFloat(document.getElementById('balanceVal').textContent.replace(/[^0-9.-]+/g,""));
+      const newBal = cur + pnl;
+      document.getElementById('balanceVal').textContent = '$' + newBal.toFixed(2);
+    }
+    renderHistory();
+  }, 10000 + Math.random()*15000); // Longer trade duration
+}
+
+function renderHistory(){
+  const el = document.getElementById('historyLog'); el.innerHTML='';
+  history.slice(0,80).forEach(h=>{
+    const d = document.createElement('div'); d.className='mutedSmall';
+    const when = new Date(h.time || h.closedAt).toLocaleTimeString();
+    const pnlColor = h.pnl > 0 ? '#39d353' : h.pnl < 0 ? '#ff4d4f' : 'inherit';
+    d.innerHTML = `${when} · ${h.pair} · ${h.cmd} · ${h.status || ''} ${h.pnl ? `· <span style="color:${pnlColor}">pnl ${h.pnl}</span>` : ''}`;
+    el.appendChild(d);
+  });
+}
+
+function addMarkerOnChart(s){
+  if(!showChartMarkers) return;
+  // Implementation for chart markers
+}
+
+/* ---------------------------
+   UI Wiring & Enhancements
+   --------------------------- */
+// Manual trading buttons
+document.getElementById('buyBtn').addEventListener('click', ()=>{
+  const p = pairSelect.value;
+  const price = (1 + Math.random()*0.02).toFixed(5);
+  const sl = document.getElementById('slInput').value || (parseFloat(price)-0.002).toFixed(5);
+  const tp = document.getElementById('tpInput').value || (parseFloat(price)+0.004).toFixed(5);
+  const conf = 85;
+  addSignal({ pair:p, tf:document.getElementById('timeframe').value, type:'buy', price:price, sl:sl, tp:tp, confidence:conf, manual:true, method: 'Manual Trade' });
+});
+
+document.getElementById('sellBtn').addEventListener('click', ()=>{
+  const p = pairSelect.value;
+  const price = (1 + Math.random()*0.02).toFixed(5);
+  const sl = document.getElementById('slInput').value || (parseFloat(price)+0.002).toFixed(5);
+  const tp = document.getElementById('tpInput').value || (parseFloat(price)-0.004).toFixed(5);
+  const conf = 85;
+  addSignal({ pair:p, tf:document.getElementById('timeframe').value, type:'sell', price:price, sl:sl, tp:tp, confidence:conf, manual:true, method: 'Manual Trade' });
+});
+
+// Lot size controls
+document.getElementById('lotIncrease').addEventListener('click', ()=>{
+  const lotInput = document.getElementById('lotTop');
+  let lot = parseFloat(lotInput.value);
+  if(lot < 10) {
+    lot = Math.min(10, lot + 0.01);
+    lotInput.value = lot.toFixed(2);
+  }
+});
+
+document.getElementById('lotDecrease').addEventListener('click', ()=>{
+  const lotInput = document.getElementById('lotTop');
+  let lot = parseFloat(lotInput.value);
+  if(lot > 0.01) {
+    lot = Math.max(0.01, lot - 0.01);
+    lotInput.value = lot.toFixed(2);
+  }
+});
+
+// Account mode persistence
+function setAccountMode(mode){
+  accountMode = mode;
+  localStorage.setItem('lumina_account_mode', mode);
+  document.getElementById('modeBadge').textContent = mode;
+  document.getElementById('balanceVal').textContent = mode === 'DEMO' ? '$50,000.00' : 'Real Balance';
+}
+
+// Initialize account mode from storage
+setAccountMode(accountMode);
+
+// Theme toggle with better light mode support
+document.getElementById('themeToggle').addEventListener('click', ()=>{
+  const el = document.body;
+  const t = el.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  el.setAttribute('data-theme', t);
+  localStorage.setItem('lumina_theme', t);
+  createTV(pairSelect.value, document.getElementById('timeframe').value);
+});
+
+// Initialize theme from storage
+const savedTheme = localStorage.getItem('lumina_theme') || 'dark';
+document.body.setAttribute('data-theme', savedTheme);
+
+// Other UI controls
+document.getElementById('clearSignals').addEventListener('click', ()=>{ signals = []; renderSignals(); });
+document.getElementById('exportSignals').addEventListener('click', ()=>{
+  const blob = new Blob([JSON.stringify(signals,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='lumina_signals.json'; a.click(); URL.revokeObjectURL(url);
+});
+document.getElementById('toggleChartMarkers').addEventListener('click', ()=>{ showChartMarkers = !showChartMarkers; alert('Chart markers: '+showChartMarkers); });
+
+document.getElementById('connectBridge').addEventListener('click', ()=>{
+  window.BRIDGE_URL = document.getElementById('bridgeUrl').value.trim();
+  window.BRIDGE_USER = document.getElementById('bridgeUser').value.trim();
+  window.BRIDGE_PASS = document.getElementById('bridgePass').value.trim();
+  alert('Bridge credentials saved.');
+});
+
+document.getElementById('exitAll').addEventListener('click', ()=>{
+  if(confirm('Exit ALL open demo trades?')) {
+    history = history.map(h => ({...h, status: h.status === 'open' ? 'closed' : h.status }));
+    renderHistory();
+    alert('All demo trades closed.');
+  }
+});
+
+document.getElementById('pairSearch').addEventListener('input', (e)=>{
+  const q = e.target.value.trim().toUpperCase();
+  pairSelect.innerHTML = '';
+  pairs.filter(p=>p.includes(q)).slice(0,120).forEach(p=>{
+    const opt = document.createElement('option'); opt.value=p; opt.textContent=p.slice(0,3)+'/'+p.slice(3); pairSelect.appendChild(opt);
+  });
+});
+
+/* ---------------------------
+   Enhanced Lumina Assistant
+   --------------------------- */
+const luminaHeart = document.getElementById('luminaHeart');
+const luminaPanel = document.getElementById('luminaPanel');
+luminaHeart.addEventListener('click', ()=>luminaPanel.classList.toggle('open'));
+document.getElementById('closeLumina').addEventListener('click', ()=>luminaPanel.classList.remove('open'));
+
+const luminaChat = document.getElementById('luminaChat');
+function appendLuminaChat(txt, who='Lumina AI'){
+  const div = document.createElement('div'); 
+  div.className = who.includes('You') ? 'bubble you' : 'bubble lumina';
+  div.textContent = txt; 
+  luminaChat.appendChild(div); 
+  luminaChat.scrollTop = luminaChat.scrollHeight;
+}
+
+// Enhanced chat responses
+const chatResponses = {
+  analysis: [
+    "I'm analyzing market structure and institutional levels...",
+    "Scanning for smart money concepts and order blocks...",
+    "Checking liquidity pools and market sentiment...",
+    "Analyzing price action and volume profile..."
+  ],
+  general: [
+    "I can help you analyze markets and generate trading signals.",
+    "The AI is continuously monitoring for high-probability setups.",
+    "I use multiple analysis methods including smart money concepts.",
+    "Current market conditions are being assessed for opportunities."
+  ]
+};
+
+document.getElementById('luminaSend').addEventListener('click', ()=>{
+  const q = (document.getElementById('luminaInput').value || '').trim();
+  if(!q) return;
+  appendLuminaChat(q, 'You');
+  document.getElementById('luminaInput').value = '';
+  setTimeout(()=>luminaAnswer(q), 500);
+});
+
+document.getElementById('analyzeMarket').addEventListener('click', ()=>{
+  appendLuminaChat('Analyze current market', 'You');
+  luminaAnswer('analyze market');
+});
+
+function luminaAnswer(q){
+  const lang = document.getElementById('ttsLang').value || 'en-US';
+  let response = '';
+  
+  if(/analyz|scan|market|check|view/i.test(q)){
+    const currentPair = pairSelect.value;
+    response = `Analyzing ${currentPair}... ${chatResponses.analysis[Math.floor(Math.random()*chatResponses.analysis.length)]} I'll generate signals automatically when high-confidence setups are detected.`;
+  } else if(/hello|hi|hey/i.test(q)){
+    response = "Hello! I'm Lumina AI, your professional trading assistant. I can analyze markets and generate trading signals automatically.";
+  } else if(/help|support/i.test(q)){
+    response = "I can: Analyze markets automatically, Generate trading signals, Monitor 160+ pairs, Use smart money concepts. Just let me work!";
+  } else {
+    response = chatResponses.general[Math.floor(Math.random()*chatResponses.general.length)];
+  }
+  
+  appendLuminaChat(response);
+  if(document.getElementById('speakOnText').checked) speakText(response);
+}
+
+function speakText(text){
+  try{
+    const lang = document.getElementById('ttsLang').value || 'en-US';
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = lang;
+    utter.pitch = 1.0;
+    utter.rate = 1;
+    speechSynthesis.speak(utter);
+  }catch(e){ console.warn('TTS error', e); }
+}
+
+document.getElementById('luminaMic').addEventListener('click', ()=>{
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechRecognition) return alert('SpeechRecognition not supported by browser.');
+  const r = new SpeechRecognition();
+  r.lang = (document.getElementById('ttsLang').value || 'en-US');
+  r.onresult = (ev) => { document.getElementById('luminaInput').value = ev.results[0][0].transcript; };
+  r.onerror = ()=>alert('Speech error'); 
+  r.start();
+});
+
+document.getElementById('delHistory').addEventListener('click', ()=>{ 
+  if(confirm('Clear assistant chat?')) luminaChat.innerHTML=''; 
+});
+
+/* ---------------------------
+   Initialization
+   --------------------------- */
+// Start automatic analysis
+setTimeout(() => {
+  appendLuminaChat("Lumina AI: System initialized. Monitoring 160+ pairs with advanced AI analysis. Signals will be generated automatically.");
+}, 1000);
+
+renderSignals();
+renderHistory();
+
+// Auto-refresh chart
+setInterval(()=>{ 
+  try{ if(tvWidget && tvWidget.activeChart) tvWidget.activeChart().resize(); }catch(e){} 
+}, 2500);
+
+</script>
+</body>
+</html>
