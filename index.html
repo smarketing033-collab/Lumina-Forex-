@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Lumina AI — Ultra Max (Fixed)</title>
+<meta name="description" content="Lumina AI POC - auto analysis, persistent mode, accessible mobile/desktop, assistant, demo sim" />
+<script src="https://s3.tradingview.com/tv.js"></script>
+<style>
+  :root{
+    --bg:#071023; --panel:#071428; --muted:#9fb0c8; --accent:#39d353; --danger:#ff4d4f;
+    --card:#0b1a2a; --glass: rgba(255,255,255,0.02); --text:#e6f0fb;
+  }
+  [data-theme="light"]{
+    --bg:#f6f8fb; --panel:#ffffff; --muted:#334155; --accent:#0f9d58; --danger:#c62828;
+    --card:#ffffff; --glass: rgba(2,6,23,0.02); --text:#0b1220;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text)}
+  .wrap{max-width:1200px;margin:8px auto;padding:10px}
+  .topbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .left{display:flex;gap:8px;align-items:center;flex:1}
+  .right{display:flex;gap:8px;align-items:center}
+  input,select,button{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit}
+  .card{background:linear-gradient(180deg,var(--glass),rgba(255,255,255,0));padding:10px;border-radius:12px;box-shadow:0 8px 30px rgba(2,6,23,0.5)}
+  #chartRow{display:grid;grid-template-columns: 1fr 360px; gap:12px;margin-top:12px}
+  @media(max-width:980px){ #chartRow{grid-template-columns:1fr} .right-col{order:2} .tvCard{height:48vh} }
+  #tvContainer{height:66vh;border-radius:10px;overflow:hidden;background:var(--card);position:relative}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  .btn{cursor:pointer}
+  #luminaHeart{position:fixed;right:20px;top:18px;width:56px;height:56px;border-radius:12px;background:linear-gradient(90deg,#ff758c,#7c5cff);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;border:none;z-index:2000}
+  #luminaPanel{position:fixed;right:0;top:0;height:100%;width:420px;max-width:95%;background:var(--panel);transform:translateX(110%);transition:transform .28s ease-in-out;z-index:1999;padding:12px;overflow:auto}
+  #luminaPanel.open{transform:translateX(0)}
+  .small{font-size:13px;color:var(--muted)}
+  .signal{padding:10px;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;justify-content:space-between;align-items:center}
+  .pairList{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto}
+  .pairBtn{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;text-align:left}
+  .history{max-height:160px;overflow:auto;font-size:13px;color:var(--muted)}
+  .chatArea{display:flex;flex-direction:column;gap:8px;max-height:72vh;overflow:auto;padding:6px}
+  .bubble.you{background:rgba(255,255,255,0.04);align-self:flex-end;padding:10px;border-radius:10px;max-width:85%;color:inherit}
+  .bubble.lumina{background:linear-gradient(90deg,#7c5cff,#ff758c);color:#fff;align-self:flex-start;padding:10px;border-radius:10px;max-width:85%}
+  .controls input{min-width:100px}
+  .mutedSmall{font-size:12px;color:var(--muted)}
+  .lotControls{display:flex;gap:6px;align-items:center}
+  .hidden{display:none}
+</style>
+</head>
+<body data-theme="dark">
+<div class="wrap">
+  <div class="topbar">
+    <div class="left card" style="flex:1;display:flex;gap:10px;align-items:center">
+      <div>
+        <div class="mutedSmall">Mode</div>
+        <div id="modeBadge" class="small" style="font-weight:700">DEMO</div>
+      </div>
+      <div>
+        <div class="mutedSmall">Balance</div>
+        <div id="balanceVal" style="font-weight:700">$50,000.00</div>
+      </div>
+      <div>
+        <div class="mutedSmall">Lot</div>
+        <div class="lotControls">
+          <button id="lotMinus" class="btn">-</button>
+          <input id="lotTop" value="0.01" style="width:90px"/>
+          <button id="lotPlus" class="btn">+</button>
+        </div>
+      </div>
+      <div style="flex:1">
+        <input id="pairSearch" placeholder="Search pair (EURUSD, BTCUSD...)" style="width:100%"/>
+      </div>
+      <select id="pairSelect" style="min-width:160px"></select>
+      <select id="timeframe" title="Timeframe" style="width:110px">
+        <option value="60">1m</option><option value="300">5m</option><option value="900">15m</option><option value="3600">1h</option><option value="14400">4h</option><option value="86400">1d</option><option value="604800">1w</option><option value="2592000">1M</option><option value="31536000">1Y</option>
+      </select>
+    </div>
+
+    <div class="right">
+      <input id="bridgeUrl" placeholder="Bridge URL (https://...)" style="width:300px"/>
+      <input id="bridgeUser" placeholder="user" style="width:90px"/>
+      <input id="bridgePass" placeholder="pass" type="password" style="width:110px"/>
+      <button id="connectBridge" class="btn card">Connect Bridge</button>
+      <button id="themeToggle" class="btn card">Theme</button>
+    </div>
+  </div>
+
+  <div id="chartRow">
+    <div>
+      <div id="tvContainer" class="card tvCard">
+        <div id="tv_chart_container" style="width:100%;height:100%"></div>
+      </div>
+
+      <div class="card controls" style="margin-top:12px;align-items:center">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="buyBtn" class="btn" style="background:#072a18;color:var(--accent)">BUY</button>
+          <button id="sellBtn" class="btn" style="background:#2a0b0b;color:var(--danger)">SELL</button>
+          <input id="slInput" placeholder="SL (price)" style="width:120px"/>
+          <input id="tpInput" placeholder="TP (price)" style="width:120px"/>
+          <button id="exitAll" class="btn" style="background:#5a3c00;color:#fff">EXIT ALL</button>
+        </div>
+
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <label class="mutedSmall">Mode</label>
+          <select id="autoManual"><option value="auto">AUTO</option><option value="manual">MANUAL</option></select>
+          <label class="mutedSmall">ManualMin</label><input id="manualMin" type="number" value="95" style="width:70px"/>
+          <label class="mutedSmall">AutoMin</label><input id="autoMin" type="number" value="100" style="width:70px"/>
+          <label class="mutedSmall">Allow Auto Exec</label><input id="allowAutoExec" type="checkbox"/>
+          <select id="indicator" style="width:220px"><option>RSI</option><option>MACD</option><option>VWAP</option><option>SuperTrend</option></select>
+          <button id="toggleChartMarkers" class="btn">Toggle On-Chart</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong>Live Signals</strong>
+          <div style="display:flex;gap:8px">
+            <button id="exportSignals" class="btn">Export</button>
+            <button id="clearSignals" class="btn">Clear</button>
+          </div>
+        </div>
+
+        <div id="signalList" style="margin-top:10px;max-height:260px;overflow:auto"></div>
+        <div style="margin-top:10px" class="history">
+          <strong class="mutedSmall">History</strong>
+          <div id="historyLog"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="right-col">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong>Quick Pairs</strong>
+        </div>
+        <div class="pairList" id="pairsQuick" style="margin-top:8px"></div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <strong>Account</strong>
+        <div class="mutedSmall" style="margin-top:6px">Mode: <span id="accountMode">DEMO</span></div>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button id="switchDemo" class="btn">DEMO</button><button id="switchReal" class="btn">REAL</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <strong>Indicators</strong>
+        <div class="mutedSmall" style="margin-top:6px">Add built-in or custom indicators (POC)</div>
+        <div style="margin-top:8px"><select id="indAdd" style="width:100%"><option>RSI</option><option>MACD</option><option>SuperTrend</option><option>VWAP</option></select></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Lumina heart button -->
+<button id="luminaHeart" title="Open Lumina">♡</button>
+
+<!-- Lumina full chat panel -->
+<div id="luminaPanel" aria-hidden="true">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <h3 style="margin:0">Lumina — Assistant</h3>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="ttsLang">
+        <option value="en-US">English (US)</option>
+        <option value="ur-PK">Urdu (PK)</option>
+        <option value="en-GB">English (UK)</option>
+      </select>
+      <label class="small"><input id="speakOnText" type="checkbox"/> Speak</label>
+      <button id="closeLumina" class="btn">Close</button>
+    </div>
+  </div>
+
+  <div style="margin-top:8px">
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input id="luminaInput" placeholder="Ask Lumina..." style="flex:1"/>
+      <button id="luminaSend" class="btn">Ask</button>
+      <button id="luminaMic" class="btn">🎤</button>
+    </div>
+
+    <div id="luminaChat" class="chatArea card" style="margin-top:8px"></div>
+
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input id="fileUp" type="file" accept="image/*,.png,.jpg,.jpeg,.pdf"/>
+      <button id="camOpen" class="btn">Camera</button>
+      <button id="delHistory" class="btn">Delete Chat</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------------------------
+   CONFIG & STATE
+   --------------------------- */
+const DEMO_START_BAL = 50000;
+const ANALYSIS_VALID_MS = 1000 * 60 * 6; // 6 minutes
+let lastAnalysis = {time:0, pair:null, result:null};
+let signals = [];
+let history = [];
+let showChartMarkers = false;
+let tvWidget = null;
+let pairs = [];
+/* build 160+ pairs */
+(function buildPairs(){
+  const base = ["EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","USDCHF","NZDUSD","EURGBP","EURJPY","GBPJPY","XAUUSD","BTCUSD","ETHUSD"];
+  const extras = ['CAD','CHF','AUD','NZD','JPY','GBP','EUR','USD','MXN','ZAR','SEK','NOK','TRY','BRL','INR','CNY','SGD','HKD','KRW','PLN','RUB'];
+  let arr = [...base];
+  for(let i=0;i<extras.length;i++){
+    for(let j=0;j<extras.length;j++){
+      if(i===j) continue;
+      arr.push(extras[i]+extras[j]);
+    }
+  }
+  pairs = Array.from(new Set(arr)).slice(0,200);
+})();
+
+/* ---------------------------
+   UI refs
+   --------------------------- */
+const pairSelect = document.getElementById('pairSelect'), pairsQuick = document.getElementById('pairsQuick');
+const balanceVal = document.getElementById('balanceVal'), accountMode = document.getElementById('accountMode');
+const modeBadge = document.getElementById('modeBadge');
+
+/* populate UI */
+pairs.slice(0,160).forEach((p, idx)=>{
+  const opt = document.createElement('option'); opt.value = p; opt.textContent = p.slice(0,3)+'/'+p.slice(3); pairSelect.appendChild(opt);
+  if(idx < 60){
+    const b = document.createElement('button'); b.className='pairBtn'; b.textContent = p.slice(0,3)+'/'+p.slice(3);
+    b.addEventListener('click', ()=>{ pairSelect.value=p; onPairChange(); });
+    pairsQuick.appendChild(b);
+  }
+});
+pairSelect.value='EURUSD';
+
+/* ---------------------------
+   TradingView widget helper
+   --------------------------- */
+function mapInterval(tf){
+  if(tf==='60') return '1';
+  if(tf==='300') return '5';
+  if(tf==='900') return '15';
+  if(tf==='3600') return '60';
+  if(tf==='14400') return '240';
+  if(tf==='86400') return 'D';
+  if(tf==='604800') return 'W';
+  if(tf==='2592000') return 'M';
+  return tf;
+}
+function createTV(symbol, tf){
+  try{ if(tvWidget && tvWidget.remove) tvWidget.remove(); }catch(e){}
+  const tvSymbol = (symbol && symbol.length===6) ? 'FX:'+symbol : symbol;
+  const opts = {
+    symbol: tvSymbol || 'FX:EURUSD',
+    container_id: "tv_chart_container",
+    library_path: "https://s3.tradingview.com/",
+    locale: "en",
+    autosize: true,
+    interval: mapInterval(tf),
+    theme: (document.body.getAttribute('data-theme')==='dark' ? 'Dark' : 'Light'),
+    overrides:{
+      "mainSeriesProperties.candleStyle.upColor": "#39d353",
+      "mainSeriesProperties.candleStyle.downColor": "#ff4d4f",
+      "paneProperties.background": document.body.getAttribute('data-theme') === 'dark' ? "#071023" : "#ffffff",
+      "scalesProperties.textColor": document.body.getAttribute('data-theme') === 'dark' ? "#bcd1e6" : "#0b1220"
+    }
+  };
+  tvWidget = new TradingView.widget(opts);
+}
+
+/* initialize */
+createTV(pairSelect.value, document.getElementById('timeframe').value);
+
+/* refresh chart on change */
+function onPairChange(){ createTV(pairSelect.value, document.getElementById('timeframe').value); runAutoAnalysis(pairSelect.value, document.getElementById('timeframe').value); }
+pairSelect.addEventListener('change', onPairChange);
+document.getElementById('timeframe').addEventListener('change', ()=>onPairChange());
+
+/* ---------------------------
+   Persistence for demo/real selection & mode
+   --------------------------- */
+function setAccountMode(mode){
+  localStorage.setItem('lumina_account_mode', mode);
+  accountMode.textContent = mode;
+  modeBadge.textContent = mode;
+  if(mode === 'DEMO'){
+    localStorage.setItem('lumina_demo_balance', localStorage.getItem('lumina_demo_balance') || DEMO_START_BAL);
+    balanceVal.textContent = '$' + (parseFloat(localStorage.getItem('lumina_demo_balance'))||DEMO_START_BAL).toFixed(2);
+  } else {
+    // real mode - leave balance untouched (bridge will manage real)
+    balanceVal.textContent = localStorage.getItem('lumina_real_label') || '$--.--';
+  }
+}
+document.getElementById('switchDemo').addEventListener('click', ()=>{ setAccountMode('DEMO'); localStorage.setItem('lumina_account_mode','DEMO'); });
+document.getElementById('switchReal').addEventListener('click', ()=>{ setAccountMode('REAL'); localStorage.setItem('lumina_account_mode','REAL'); });
+
+/* load persisted mode at startup */
+const savedMode = localStorage.getItem('lumina_account_mode') || 'DEMO';
+setAccountMode(savedMode);
+
+/* ---------------------------
+   LOT +/- controls
+   --------------------------- */
+document.getElementById('lotPlus').addEventListener('click', ()=>{
+  const el = document.getElementById('lotTop'); let v = parseFloat(el.value||0.01); v = +(v + (v>=1?1:0.01)).toFixed(2); el.value = v; });
+document.getElementById('lotMinus').addEventListener('click', ()=>{
+  const el = document.getElementById('lotTop'); let v = parseFloat(el.value||0.01); v = +(Math.max(0.01, v - (v>1?1:0.01))).toFixed(2); el.value = v; });
+
+/* ---------------------------
+   Analysis engine (AUTO) - runs automatically
+   - For POC we simulate deep analysis; in production replace with server-side analysis
+   --------------------------- */
+async function runDeepAnalysis(pair, tf){
+  // simulated heavy analysis
+  await new Promise(r=>setTimeout(r, 1200 + Math.random()*1200));
+  // simulate indicators and scoring
+  const smaShort = 1 + ((Math.random()-0.5) * 0.01);
+  const smaLong = smaShort + ((Math.random()-0.5) * 0.008);
+  const atr = 0.001 + Math.random()*0.003;
+  const volSpike = Math.random() > 0.6;
+  let score = 50;
+  if(smaShort > smaLong) score += 25; else score -= 5;
+  score += Math.round((1/atr) * 1.5);
+  if(volSpike) score += 8;
+  score = Math.max(60, Math.min(110, Math.round(score)));
+  const dir = (smaShort > smaLong) ? 'buy' : 'sell';
+  const price = (1 + Math.random()*0.02).toFixed(5);
+  // widen TP for "longer" targets when confidence high
+  const sl = (parseFloat(price) + (dir==='buy' ? -atr : atr)).toFixed(5);
+  const tp = (parseFloat(price) + (dir==='buy' ? (atr*4) : (-atr*4))).toFixed(5);
+  const result = { pair, tf, dir, confidence: score, price, sl, tp, notes: volSpike ? 'vol spike' : 'no spike', time: Date.now() };
+  lastAnalysis = { time:Date.now(), pair, result };
+  // auto-add recommended signal if above manual threshold OR if auto mode and autoMin reached (but auto-exec requires allowAutoExec)
+  const manualThreshold = parseInt(document.getElementById('manualMin').value || 95);
+  const autoMin = parseInt(document.getElementById('autoMin').value || 100);
+  const mode = document.getElementById('autoManual').value;
+  // add recommended signal if it's high confidence for manual/auto visibility - but do not auto-exec without allowAutoExec and recent analysis
+  if(result.confidence >= Math.min(manualThreshold, autoMin)) {
+    addSignal({ pair: result.pair, tf: result.tf, type: result.dir, price: result.price, sl: result.sl, tp: result.tp, confidence: result.confidence, time: Date.now(), manual: (mode==='manual') });
+  }
+  appendLuminaChat(`Analysis (${pair} ${tf}s): ${result.dir.toUpperCase()} conf ${result.confidence}% — ${result.notes}`);
+  return result;
+}
+
+/* auto-run analysis on pair/timeframe change and periodically */
+let autoAnalyzeTimer = setInterval(()=> {
+  runAutoAnalysis(pairSelect.value, document.getElementById('timeframe').value);
+}, 1000 * 25); // every 25s
+
+async function runAutoAnalysis(pair, tf){
+  // only run if not run recently
+  const now = Date.now();
+  if(lastAnalysis.time && lastAnalysis.pair === pair && (now - lastAnalysis.time) < ANALYSIS_VALID_MS) return;
+  await runDeepAnalysis(pair, tf);
+}
+
+/* ---------------------------
+   Signals management + rendering
+   --------------------------- */
+function renderSignals(){
+  const el = document.getElementById('signalList'); el.innerHTML='';
+  signals.forEach(s=>{
+    const d = document.createElement('div'); d.className='signal';
+    d.innerHTML = `
+      <div style="max-width:65%">
+        <div style="display:flex;gap:8px;align-items:center">
+          <strong style="color:${s.type==='buy'?'#39d353':'#ff4d4f'}">${s.type.toUpperCase()}</strong>
+          <div class="mutedSmall">${s.pair} • ${s.tf}s</div>
+        </div>
+        <div class="mutedSmall">Entry: ${s.price} • SL: ${s.sl} • TP: ${s.tp}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-weight:700">${s.confidence}%</div>
+        <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px">
+          ${document.getElementById('autoManual').value === 'manual' ? `<button class="btn" data-id="${s.id}" onclick="confirmManual(this.dataset.id)">CONFIRM</button>` : ''}
+          <button class="btn" data-id="${s.id}" onclick="removeSignal(this.dataset.id)">Remove</button>
+        </div>
+      </div>`;
+    el.appendChild(d);
+  });
+}
+
+function addSignal(s){
+  s.id = 'sig_' + Date.now() + '_' + Math.floor(Math.random()*999);
+  signals.unshift(s);
+  if(signals.length > 200) signals.pop();
+  renderSignals();
+  if(showChartMarkers) addMarkerOnChart(s);
+  // Auto-exec protection: only if allowAutoExec checked and lastAnalysis present for same pair and confidence >= autoMin
+  if(document.getElementById('autoManual').value === 'auto' && document.getElementById('allowAutoExec').checked){
+    const autoMin = parseInt(document.getElementById('autoMin').value||100);
+    if(lastAnalysis && lastAnalysis.time > (Date.now() - ANALYSIS_VALID_MS) && lastAnalysis.pair === s.pair && s.confidence >= autoMin){
+      // send to bridge
+      sendToBridge({...s, ea_id:'lumina_ea_01', cmd:s.type});
+    } else {
+      console.log('Auto suppressed (no valid analysis or low confidence).');
+    }
+  }
+}
+
+function removeSignal(id){
+  signals = signals.filter(x=>x.id !== id);
+  renderSignals();
+}
+
+function confirmManual(id){
+  const s = signals.find(x=>x.id===id);
+  if(!s) return alert('Signal not found');
+  if(!confirm(`Confirm ${s.type.toUpperCase()} ${s.pair} @ ${s.price} ?`)) return;
+  sendToBridge({...s, ea_id:'lumina_ea_01', cmd:s.type, manual:true});
+}
+
+/* ---------------------------
+   Demo trade simulation & Bridge stub
+   --------------------------- */
+async function sendToBridge(body){
+  const url = window.BRIDGE_URL || document.getElementById('bridgeUrl').value.trim();
+  const user = window.BRIDGE_USER || document.getElementById('bridgeUser').value.trim();
+  const pass = window.BRIDGE_PASS || document.getElementById('bridgePass').value.trim();
+  if(!url){
+    // local simulate
+    simulateOpenTrade(body);
+    return { ok:true, simulated:true };
+  }
+  try{
+    const res = await fetch(url + '/api/trade', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization': 'Basic ' + btoa(user + ':' + pass) },
+      body: JSON.stringify(body)
+    });
+    const j = await res.json();
+    if(j && j.ok) simulateOpenTrade(body);
+    else alert('Bridge rejected: ' + JSON.stringify(j));
+    return j;
+  }catch(e){
+    console.warn('bridge fail', e);
+    alert('Bridge unreachable — simulating trade locally (demo).');
+    simulateOpenTrade(body);
+    return { ok:false, error:e.toString() };
+  }
+}
+
+function simulateOpenTrade(body){
+  const now = Date.now();
+  const trade = { id:'T'+now, pair:body.pair, cmd: body.cmd || body.type, vol: parseFloat(body.volume || document.getElementById('lotTop').value || 0.01), price: body.price || (1 + Math.random()*0.02).toFixed(5), sl: body.sl || body.sl, tp: body.tp || body.tp, time: now, confidence: body.confidence || 80, status:'open' };
+  history.unshift({...trade, note:'opened'});
+  renderHistory();
+  // simulate close after 6-12s
+  setTimeout(()=>{
+    const conf = trade.confidence;
+    let winProb = Math.max(0.05, Math.min(0.95, (conf - 55) / 55 ));
+    const win = Math.random() < winProb;
+    // bigger TP for high-conf trades -> bigger pnl
+    const basePnL = trade.vol * (win ? 40 : -40) * (0.6 + Math.random() * (conf/100));
+    const pnl = parseFloat(basePnL.toFixed(2));
+    history.unshift({...trade, status: win ? 'win' : 'loss', pnl: pnl, closedAt: Date.now()});
+    // update demo balance
+    if(accountMode.textContent === 'DEMO'){
+      const cur = parseFloat(localStorage.getItem('lumina_demo_balance') || DEMO_START_BAL);
+      const newBal = cur + pnl;
+      localStorage.setItem('lumina_demo_balance', newBal.toFixed(2));
+      balanceVal.textContent = '$' + newBal.toFixed(2);
+    }
+    renderHistory();
+  }, 6000 + Math.random()*6000);
+}
+
+/* render history */
+function renderHistory(){
+  const el = document.getElementById('historyLog'); el.innerHTML='';
+  history.slice(0,80).forEach(h=>{
+    const d = document.createElement('div'); d.className='mutedSmall';
+    const when = new Date(h.time || h.closedAt).toLocaleString();
+    d.textContent = `${when} · ${h.pair} · ${h.cmd} · ${h.status || ''} ${h.pnl ? ' · pnl '+h.pnl : ''}`;
+    el.appendChild(d);
+  });
+}
+
+/* on chart markers */
+function addMarkerOnChart(s){
+  if(!showChartMarkers) return;
+  try{
+    const c = document.getElementById('tv_chart_container');
+    const badge = document.createElement('div');
+    badge.style.position='absolute'; badge.style.right='8px'; badge.style.top=(20 + Math.random()*200)+'px';
+    badge.style.padding='4px 6px'; badge.style.fontSize='12px'; badge.style.borderRadius='8px'; badge.style.zIndex=1200;
+    badge.style.background = s.type==='buy' ? 'rgba(57,211,83,0.12)' : 'rgba(255,77,79,0.10)';
+    badge.style.color = s.type==='buy' ? '#39d353' : '#ff4d4f';
+    badge.textContent = `${s.type.toUpperCase()} ${s.confidence}%`;
+    badge.id = 'badge_' + s.id;
+    c.appendChild(badge);
+    setTimeout(()=>badge.remove(), 20000);
+  }catch(e){}
+}
+
+/* ---------------------------
+   UI wiring
+   --------------------------- */
+document.getElementById('buyBtn').addEventListener('click', ()=>manualOrder('buy'));
+document.getElementById('sellBtn').addEventListener('click', ()=>manualOrder('sell'));
+function manualOrder(side){
+  const p = pairSelect.value;
+  const price = (1 + Math.random()*0.02).toFixed(5);
+  const sl = document.getElementById('slInput').value || (parseFloat(price) + (side==='buy' ? -0.002 : 0.002)).toFixed(5);
+  const tp = document.getElementById('tpInput').value || (parseFloat(price) + (side==='buy' ? 0.006 : -0.006)).toFixed(5);
+  const conf = parseInt(document.getElementById('manualMin').value || 95);
+  const mode = document.getElementById('autoManual').value;
+  const signal = { pair:p, tf:document.getElementById('timeframe').value, type:side, price, sl, tp, confidence:conf, time:Date.now(), manual:true };
+  addSignal(signal);
+  if(mode === 'manual'){
+    // we ask user to confirm per-signal (CONFIRM button appears in signals list),
+    alert('Signal created in MANUAL mode. Please CONFIRM in Live Signals to execute.');
+  } else {
+    // if auto and allowAutoExec is checked and lastAnalysis valid and match pair -> maybe send
+    if(document.getElementById('allowAutoExec').checked){
+      // direct attempt to send
+      if(lastAnalysis && lastAnalysis.pair === p && lastAnalysis.time > (Date.now() - ANALYSIS_VALID_MS)){
+        sendToBridge({...signal, ea_id:'lumina_ea_01', cmd:side});
+      } else {
+        alert('Auto-exec suppressed: no recent analysis for this pair.');
+      }
+    } else {
+      alert('Signal created (AUTO mode but auto-exec disabled).');
+    }
+  }
+}
+
+document.getElementById('clearSignals').addEventListener('click', ()=>{ signals = []; renderSignals(); });
+document.getElementById('exportSignals').addEventListener('click', ()=>{
+  const blob = new Blob([JSON.stringify(signals,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='lumina_signals.json'; a.click(); URL.revokeObjectURL(url);
+});
+document.getElementById('toggleChartMarkers').addEventListener('click', ()=>{ showChartMarkers = !showChartMarkers; alert('Chart markers: '+showChartMarkers); });
+
+document.getElementById('connectBridge').addEventListener('click', ()=>{
+  window.BRIDGE_URL = document.getElementById('bridgeUrl').value.trim();
+  window.BRIDGE_USER = document.getElementById('bridgeUser').value.trim();
+  window.BRIDGE_PASS = document.getElementById('bridgePass').value.trim();
+  alert('Bridge stored in front-end (demo). For production, store server-side.');
+});
+
+document.getElementById('exitAll').addEventListener('click', ()=>{
+  if(confirm('Exit ALL open demo trades?')){
+    history = history.map(h => ({...h, status: h.status === 'open' ? 'closed' : h.status }));
+    renderHistory();
+    alert('All demo trades closed (simulated).');
+  }
+});
+
+/* pairSearch */
+document.getElementById('pairSearch').addEventListener('input', (e)=>{
+  const q = e.target.value.trim().toUpperCase();
+  pairSelect.innerHTML = '';
+  pairs.filter(p=>p.includes(q)).slice(0,120).forEach(p=>{
+    const opt = document.createElement('option'); opt.value=p; opt.textContent=p.slice(0,3)+'/'+p.slice(3); pairSelect.appendChild(opt);
+  });
+});
+
+/* theme toggle */
+document.getElementById('themeToggle').addEventListener('click', ()=>{
+  const el = document.body;
+  const t = el.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  el.setAttribute('data-theme', t);
+  createTV(pairSelect.value, document.getElementById('timeframe').value);
+  // ensure text colors update in light theme for history etc (we use css vars)
+});
+
+/* toggle Lumina panel */
+const luminaHeart = document.getElementById('luminaHeart'), luminaPanel = document.getElementById('luminaPanel');
+luminaHeart.addEventListener('click', ()=>luminaPanel.classList.toggle('open'));
+document.getElementById('closeLumina').addEventListener('click', ()=>luminaPanel.classList.remove('open'));
+
+/* lumina chat */
+const luminaChat = document.getElementById('luminaChat');
+function appendLuminaChat(txt, who='Lumina'){
+  const div = document.createElement('div'); div.className = who==='You' ? 'bubble you' : 'bubble lumina';
+  div.textContent = txt; luminaChat.appendChild(div); luminaChat.scrollTop = luminaChat.scrollHeight;
+}
+document.getElementById('luminaSend').addEventListener('click', ()=>{ const q = (document.getElementById('luminaInput').value||'').trim(); if(!q) return; appendLuminaChat(q, 'You'); document.getElementById('luminaInput').value=''; setTimeout(()=>luminaAnswer(q), 400 + Math.random()*800); });
+function luminaAnswer(q){
+  if(/analyz|scan|levels|order block|smart money/i.test(q)){
+    appendLuminaChat(`Lumina: Running deep scan on ${pairSelect.value} — auto analysis runs periodically, results appear in Live Signals.`);
+    if(document.getElementById('speakOnText').checked) speakText(`I am scanning ${pairSelect.value}`);
+    runDeepAnalysis(pairSelect.value, document.getElementById('timeframe').value);
+    return;
+  }
+  appendLuminaChat(`Lumina: I heard: "${q}". Use the chat to ask analysis or upload a chart image.`);
+  if(document.getElementById('speakOnText').checked) speakText(q);
+}
+
+/* TTS helper */
+function speakText(text){
+  try{
+    const lang = document.getElementById('ttsLang').value || 'en-US';
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = lang;
+    const voices = speechSynthesis.getVoices();
+    let v = null;
+    // try to find matching language voice
+    for(const vv of voices){ if(vv.lang && vv.lang.startsWith(lang.split('-')[0])){ v = vv; break; } }
+    if(v) utter.voice = v;
+    utter.pitch = 1.05; utter.rate = 1;
+    speechSynthesis.speak(utter);
+  }catch(e){ console.warn('TTS error', e); }
+}
+
+/* Speech recognition for lumina input */
+document.getElementById('luminaMic').addEventListener('click', ()=>{
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechRecognition) return alert('SpeechRecognition not supported by this browser.');
+  const r = new SpeechRecognition();
+  r.lang = (document.getElementById('ttsLang').value || 'en-US');
+  r.onresult = (ev) => { document.getElementById('luminaInput').value = ev.results[0][0].transcript; document.getElementById('luminaSend').click(); };
+  r.onerror = ()=>alert('Speech error'); r.start();
+});
+
+/* delete assistant chat */
+document.getElementById('delHistory').addEventListener('click', ()=>{ if(confirm('Clear assistant chat?')) luminaChat.innerHTML=''; });
+
+/* camera preview in chat */
+document.getElementById('camOpen').addEventListener('click', async ()=>{
+  try{
+    const s = await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+    const v = document.createElement('video'); v.autoplay=true; v.muted=true; v.playsInline=true; v.style.maxWidth='100%'; v.srcObject = s;
+    luminaChat.appendChild(v); luminaChat.scrollTop = luminaChat.scrollHeight;
+  }catch(e){ alert('camera error'); }
+});
+/* file upload into chat */
+document.getElementById('fileUp').addEventListener('change', (ev)=>{
+  const f = ev.target.files[0];
+  if(!f) return;
+  const url = URL.createObjectURL(f);
+  appendLuminaChat('Uploaded file: ' + (f.name || 'file'), 'Lumina');
+});
+
+/* small rendering interval to keep widget sizing sane */
+setInterval(()=>{ try{ if(tvWidget && tvWidget.activeChart) tvWidget.activeChart().resize(); }catch(e){} }, 2500);
+
+/* final small startup: restore demo balance */
+(function init(){
+  const bal = parseFloat(localStorage.getItem('lumina_demo_balance')||DEMO_START_BAL);
+  balanceVal.textContent = '$' + bal.toFixed(2);
+  renderSignals(); renderHistory();
+  // start initial analysis for the default pair
+  runAutoAnalysis(pairSelect.value, document.getElementById('timeframe').value);
+})();
+</script>
+</body>
+</html>
